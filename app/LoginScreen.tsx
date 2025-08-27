@@ -5,12 +5,12 @@ import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// ← עדכן את הנתיב לפי הקובץ שלך (זה ה-client המשותף)
+
 import { supabase } from '../lib/supabase';
 import { COLORS, styles as s } from '../styles/LoginScreen.styles';
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');      // שים כאן אימייל אם זה המזהה שלך
+  const [username, setUsername] = useState('');      
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -28,7 +28,7 @@ export default function LoginScreen() {
     setErrorMsg(null);
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: username.trim(),  // אם זה לא אימייל, החלף ל־phone/flow המתאים
+        email: username.trim(),  
         password,
       });
       if (error) {

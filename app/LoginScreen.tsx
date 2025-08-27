@@ -1,22 +1,57 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useState } from 'react';
-import { Image, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// ← עדכן את הנתיב לפי הקובץ שלך (זה ה-client המשותף)
+import { supabase } from '../lib/supabase';
 import { COLORS, styles as s } from '../styles/LoginScreen.styles';
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState('');      // שים כאן אימייל אם זה המזהה שלך
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const passwordRef = useRef<TextInput>(null);
+  const navigation = useNavigation();
+
+  const handleSignIn = async () => {
+    if (!username || !password) {
+      setErrorMsg('Please fill in both fields.');
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: username.trim(),  // אם זה לא אימייל, החלף ל־phone/flow המתאים
+        password,
+      });
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          setErrorMsg('Email or password is incorrect.');
+        } else {
+          setErrorMsg(error.message);
+        }
+        return;
+      }
+      // הצלחה → נווט למסך הראשי שלך
+      navigation.reset({ index: 0, routes: [{ name: 'Home' as never }] });
+    } catch {
+      setErrorMsg('Something went wrong. Check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={s.root}>
-      {/* waves — תמיד מאחור */}
       <Image source={require('../assets/images/Vector_1.png')} style={s.waveTop} resizeMode="cover" />
       <Image source={require('../assets/images/Vector_2.png')} style={s.waveBottom} resizeMode="contain" />
-
       <SafeAreaView edges={['top']} style={s.safe}>
         <View style={s.content}>
           {/* Title */}
@@ -27,24 +62,23 @@ export default function LoginScreen() {
 
           {/* Form */}
           <View style={s.formGroup}>
-            {/* Username */}
             <View style={s.inputWrapper}>
               <Ionicons name="person-outline" size={22} color={COLORS.textMuted} style={s.inputIcon} />
               <TextInput
                 style={s.textInput}
-                placeholder="Username"
+                placeholder="Email"
                 placeholderTextColor={COLORS.placeholder}
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
                 autoCorrect={false}
-                textContentType="username"
+                keyboardType="email-address"
+                textContentType="emailAddress"
                 returnKeyType="next"
                 onSubmitEditing={() => passwordRef.current?.focus()}
               />
             </View>
 
-            {/* Password */}
             <View style={s.inputWrapper}>
               <Ionicons name="lock-closed-outline" size={22} color={COLORS.textMuted} style={s.inputIcon} />
               <TextInput
@@ -59,19 +93,18 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
+                onSubmitEditing={handleSignIn}
               />
-              <Pressable
-                onPress={() => setShowPassword(v => !v)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-              >
+              <Pressable onPress={() => setShowPassword(v => !v)} hitSlop={10} accessibilityRole="button">
                 <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={COLORS.textMuted} />
               </Pressable>
             </View>
 
+            {/* Error message (אם יש) */}
+            {errorMsg ? <Text style={s.errorText}>{errorMsg}</Text> : null}
+
             {/* Forgot */}
-            <Pressable style={s.forgotWrap} onPress={() => {}}>
+            <Pressable style={s.forgotWrap} onPress={() => { /* navigation.navigate('ForgotPassword') */ }}>
               <Text style={s.forgotLink}>Forgot your password?</Text>
             </Pressable>
           </View>
@@ -79,14 +112,20 @@ export default function LoginScreen() {
           {/* CTA */}
           <View style={s.ctaRow}>
             <Text style={s.ctaText}>Sign in</Text>
-            <Pressable onPress={() => {}} hitSlop={10} accessibilityRole="button" accessibilityLabel="Sign in">
+            <Pressable
+              onPress={handleSignIn}
+              disabled={loading || !username || !password}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in"
+            >
               <LinearGradient
                 colors={['#F5C450', '#EA4CB3', '#7C3AED']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={s.ctaButton}
+                style={[s.ctaButton, (loading || !username || !password) && { opacity: 0.6 }]}
               >
-                <Ionicons name="arrow-forward" size={22} color="#fff" />
+                {loading ? <ActivityIndicator color="#fff" /> : <Ionicons name="arrow-forward" size={22} color="#fff" />}
               </LinearGradient>
             </Pressable>
           </View>
@@ -94,7 +133,7 @@ export default function LoginScreen() {
           {/* Footer */}
           <View style={s.createAccountRow}>
             <Text style={s.createText}>Don't have an account? </Text>
-            <Pressable onPress={() => {}}>
+            <Pressable onPress={() => { /* navigation.navigate('SignUp') */ }}>
               <Text style={s.createButton}>Create</Text>
             </Pressable>
           </View>

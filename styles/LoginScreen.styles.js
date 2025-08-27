@@ -51,6 +51,14 @@ export const styles = StyleSheet.create({
   inputIcon: { marginRight: SPACING.sm },
   textInput: { flex: 1, fontSize: 16, color: COLORS.text, paddingVertical: 0 },
 
+  // טקסט שגיאה
+  errorText: {
+  color: '#EF4444',
+  fontSize: 14,
+  textAlign: 'center',
+  marginTop: 6,
+},
+
   // Forgot
   forgotWrap: { alignSelf: 'flex-end', paddingHorizontal: 4 },
   forgotLink: { color: '#9E9E9E', fontSize: 14 },

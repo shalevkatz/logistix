@@ -1,13 +1,14 @@
+import { AuthStackParamList } from '@/navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-
 import { supabase } from '../lib/supabase';
 import { COLORS, styles as s } from '../styles/LoginScreen.styles';
+
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');      
@@ -16,8 +17,12 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+
+  type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'LoginScreen'>;
+  const navigation = useNavigation<LoginNav>();
+  const Stack = createNativeStackNavigator<AuthStackParamList>();
+
   const passwordRef = useRef<TextInput>(null);
-  const navigation = useNavigation();
 
   const handleSignIn = async () => {
     if (!username || !password) {
@@ -49,6 +54,7 @@ export default function LoginScreen() {
   };
 
   return (
+  <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={s.root}>
       <Image source={require('../assets/images/Vector_1.png')} style={s.waveTop} resizeMode="cover" />
       <Image source={require('../assets/images/Vector_2.png')} style={s.waveBottom} resizeMode="contain" />
@@ -133,12 +139,13 @@ export default function LoginScreen() {
           {/* Footer */}
           <View style={s.createAccountRow}>
             <Text style={s.createText}>Don't have an account? </Text>
-            <Pressable onPress={() => { /* navigation.navigate('SignUp') */ }}>
+            <Pressable onPress={() => navigation.navigate('SignUpScreen')}>
               <Text style={s.createButton}>Create</Text>
             </Pressable>
           </View>
         </View>
       </SafeAreaView>
     </View>
+  </TouchableWithoutFeedback>
   );
 }

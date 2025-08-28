@@ -1,30 +1,224 @@
-import React from 'react'
-import { Image, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { styles as s } from '../styles/SignUpScreen.style'
+// src/screens/SignUpScreen.tsx
+import { COLORS } from '@/styles/LoginScreen.styles';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Keyboard, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../lib/supabase'; // מומלץ לשים את הקליינט בקובץ נפרד
+import { styles as s } from '../styles/SignUpScreen.style';
 
+
+const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
+const friendlyError = (msg: string) => {
+  if (/User already registered/i.test(msg)) return 'Email is already in use';
+  if (/at least 6 characters/i.test(msg))  return 'Password must be at least 6 characters';
+  return msg;
+};
 
 const SignUpScreen = () => {
+  const nav = useNavigation<any>();
+
+  // states
+  const [username, setUsername] = useState('');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [confirm, setConfirm]     = useState('');
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+
+  // refs למעברי פוקוס
+  const emailRef   = useRef<TextInput>(null);
+  const passRef    = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
+
+
+  const backToLogin = () => {
+  if (nav.canGoBack()) {
+    nav.goBack();        // pops SignUp off the stack → reveals the original Login
+  } else {
+    nav.replace('Login'); // fallback if user deep-linked straight to SignUp
+  }
+};
+
+
+  const canCreate =
+    !loading &&
+    username.trim().length > 0 &&
+    isEmail(email) &&
+    password.length >= 6 &&
+    confirm === password;
+
+  // פונקציית ההרשמה האמיתית (ASYNC)
+  const onSignup = async () => {
+    // בדיקות בסיסיות
+    if (!username || !email || !password || !confirm) return setError('Please fill all fields');
+    if (!isEmail(email)) return setError('Invalid email');
+    if (password.length < 6) return setError('Password must be at least 6 characters');
+    if (password !== confirm) return setError('Passwords do not match');
+
+    setError(null);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: username } },
+      });
+      if (error) throw error;
+
+      // אם אימות מייל פעיל — לא תהיה session עד אישור המייל
+      if (!data.session) {
+        Alert.alert('Verify your email', 'We sent you a verification link.');
+        nav.navigate('Login');
+        return;
+      }
+
+      Alert.alert('Welcome!', 'Account created.');
+      nav.navigate('Home');
+    } catch (e: any) {
+      setError(friendlyError(e?.message ?? 'Signup failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
+  <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={s.root}>
-      <Image source={require('../assets/images/Vector_1.png')} style={s.waveTop} resizeMode='cover' />
-      <Image source={require('../assets/images/Vector_2.png')} style={s.waveBottom} resizeMode='contain' />
+      {/* גלי רקע */}
+      <Image source={require('../assets/images/Vector_1.png')} style={s.waveTop} resizeMode="cover" />
+      <Image source={require('../assets/images/Vector_2.png')} style={s.waveBottom} resizeMode="contain" />
 
       <SafeAreaView edges={['top']} style={s.safe}>
-              <View style={s.content}>
+        <View style={s.content}>
+          {/* Title */}
+          <View style={s.titleGroup}>
+            <Text style={s.title}>Create Account</Text>
+          </View>
 
-                {/* Title */}
-                <View style={s.titleGroup}>
-                <Text style={s.title}>Create Account</Text>
-                </View>
+          {/* Form */}
+          <View style={s.formGroup}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+              {!!error && <Text style={s.error}>{error}</Text>}
 
-                {/* Form */}
-                <View style={s.formGroup}>
-                </View>
-              </View>
-            </SafeAreaView>
+              {/* User name */}
+              <View style={s.inputRow}>
+                <Ionicons name="person-outline" size={18} color={COLORS.placeholder} />
+              <TextInput
+                style={s.inputFlex}
+                placeholder=" Username"
+                placeholderTextColor={COLORS.placeholder}
+                value={username}
+                onChangeText={(t) => { setUsername(t); if (error) setError(null); }}
+                returnKeyType="next"
+                onSubmitEditing={() => emailRef.current?.focus()}
+                textContentType="name"
+                autoComplete="name"
+              />
             </View>
-  )
-}
+              {/* Email */}
+              <View style={s.inputRow}>
+  <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} style={s.iconLeft} />
+  <TextInput
+    ref={emailRef}
+    style={s.inputFlex}
+    placeholder="Email"
+    placeholderTextColor={COLORS.placeholder}
+    value={email}
+    onChangeText={(t) => { setEmail(t); if (error) setError(null); }}
+    keyboardType="email-address"
+    autoCapitalize="none"
+    autoCorrect={false}
+    textContentType="emailAddress"
+    autoComplete="email"
+    returnKeyType="next"
+    onSubmitEditing={() => passRef.current?.focus()}
+  />
+</View>
 
-export default SignUpScreen
+              {/* Password + עין */}
+              <View style={s.inputRow}>
+  <Ionicons name="lock-closed-outline" size={18} color={COLORS.textMuted} style={s.iconLeft} />
+  <TextInput
+    ref={passRef}
+    style={s.inputFlex}
+    placeholder="Password"
+    placeholderTextColor={COLORS.placeholder}
+    value={password}
+    onChangeText={(t) => { setPassword(t); if (error) setError(null); }}
+    secureTextEntry={!showPassword}
+    textContentType="newPassword"
+    autoComplete="password-new"
+    returnKeyType="next"
+    onSubmitEditing={() => confirmRef.current?.focus()}
+  />
+  <Pressable style={s.iconRight} onPress={() => setShowPassword(v => !v)}>
+    <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={COLORS.textMuted} />
+  </Pressable>
+</View>
+
+
+              {/* Confirm password */}
+              <View style={s.inputRow}>
+  <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.textMuted} style={s.iconLeft} />
+  <TextInput
+    ref={confirmRef}
+    style={s.inputFlex}
+    placeholder="Confirm password"
+    placeholderTextColor={COLORS.placeholder}
+    value={confirm}
+    onChangeText={(t) => { setConfirm(t); if (error) setError(null); }}
+    secureTextEntry={!showPassword}
+    textContentType="newPassword"
+    autoComplete="password-new"
+    returnKeyType="done"
+    onSubmitEditing={onSignup}
+  />
+</View>
+
+              {/* CTA */}
+<View style={s.ctaRow}>
+  <Text style={s.ctaText}>Create</Text>
+
+  <Pressable
+    onPress={onSignup}              // ← זו הפונקציה שבונה המשתמש ב-Supabase
+    disabled={!canCreate}
+    hitSlop={10}
+    accessibilityRole="button"
+    accessibilityLabel="Create account"
+  >
+    <LinearGradient
+      colors={['#F5C450', '#EA4CB3', '#7C3AED']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[s.ctaButton, !canCreate && { opacity: 0.6 }]}
+    >
+      {loading
+        ? <ActivityIndicator color="#fff" />
+        : <Ionicons name="arrow-forward" size={22} color="#fff" />}
+          </LinearGradient>
+        </Pressable>
+        </View>
+
+
+              {/* לינק ל־Login */}
+              <View style={s.linkRow}>
+                <Text style={s.linkTextMuted}>Already have an account?</Text>
+                <Pressable onPress={backToLogin}>
+                  <Text style={s.linkText}> Login</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
+  </TouchableWithoutFeedback>
+  );
+};
+
+export default SignUpScreen;

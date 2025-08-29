@@ -110,7 +110,7 @@ export default function LoginScreen() {
             {errorMsg ? <Text style={s.errorText}>{errorMsg}</Text> : null}
 
             {/* Forgot */}
-            <Pressable style={s.forgotWrap} onPress={() => { /* navigation.navigate('ForgotPassword') */ }}>
+            <Pressable style={s.forgotWrap} onPress={() => navigation.navigate('ForgotPasswordScreen')}>
               <Text style={s.forgotLink}>Forgot your password?</Text>
             </Pressable>
           </View>

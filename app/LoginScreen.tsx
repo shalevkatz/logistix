@@ -3,11 +3,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from "expo-router";
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Image, Keyboard, Pressable, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { COLORS, styles as s } from '../styles/LoginScreen.styles';
+
 
 
 export default function LoginScreen() {
@@ -24,34 +26,44 @@ export default function LoginScreen() {
 
   const passwordRef = useRef<TextInput>(null);
 
-  const handleSignIn = async () => {
-    if (!username || !password) {
-      setErrorMsg('Please fill in both fields.');
+const handleSignIn = async () => {
+  if (!username || !password) {
+    setErrorMsg('Please fill in both fields.');
+    return;
+  }
+
+  setLoading(true);
+  setErrorMsg(null);
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: username.trim(),
+      password,
+    });
+
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        setErrorMsg('Email or password is incorrect.');
+      } else {
+        setErrorMsg(error.message);
+      }
+      return; // ⬅️ stay on login when there’s an error
+    }
+
+    if (!data.session) {
+      // If your project requires email verification
+      setErrorMsg('Please verify your email, then log in.');
       return;
     }
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: username.trim(),  
-        password,
-      });
-      if (error) {
-        if (error.message.includes('Invalid login credentials')) {
-          setErrorMsg('Email or password is incorrect.');
-        } else {
-          setErrorMsg(error.message);
-        }
-        return;
-      }
-      // הצלחה → נווט למסך הראשי שלך
-      navigation.reset({ index: 0, routes: [{ name: 'Home' as never }] });
-    } catch {
-      setErrorMsg('Something went wrong. Check your connection.');
-    } finally {
-      setLoading(false);
-    }
-  };
+
+    // ✅ success → go to Home
+    router.replace("/HomeScreen");
+  } catch {
+    setErrorMsg('Something went wrong. Check your connection.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
   <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>

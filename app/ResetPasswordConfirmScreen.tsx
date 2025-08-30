@@ -4,14 +4,14 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Keyboard,
-  Pressable,
-  Text,
-  TextInput,
-  TouchableWithoutFeedback,
-  View,
+    ActivityIndicator,
+    Alert,
+    Keyboard,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { COLORS, styles } from "../styles/ResetPasswordConfirmScreen.styles";

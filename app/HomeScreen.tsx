@@ -1,55 +1,138 @@
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { supabase } from "../lib/supabase";
-import { COLORS, styles } from "../styles/HomeScreen.styles";
+// app/HomeScreen.tsx
+import { Href, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useProfile } from '../hooks/useProfile';
+import { useProjects } from '../hooks/useProjects';
+import { supabase } from '../lib/supabase';
+import { styles } from '../styles/HomeScreen.styles';
 
 export default function HomeScreen() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (mounted) {
-        setEmail(user?.email ?? null);
-        setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
+  // read session once for user id + email
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [email, setEmail] = useState<string>('User');
+  const [userMeta, setUserMeta] = useState<Record<string, any>>({});
+  const { profile, loading: profileLoading, error: profileError } = useProfile(userId);
+
+useEffect(() => {
+  let mounted = true;
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (!mounted) return;
+    setUserId(session?.user?.id);
+    setEmail(session?.user?.email ?? 'User');
+    setUserMeta(session?.user?.user_metadata ?? {});   // 👈 add this
+  });
+  return () => { mounted = false; };
+}, []);
+
+  const { projects, loading, error, refetch } = useProjects(userId);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    router.replace("/LoginScreen"); // back to auth
   };
 
-  if (loading) {
+  const goNew = () => router.push('/projects/new');
+  const openProject = (id: string) => {
+    router.push({ pathname: '/projects/[id]', params: { id } } as Href);
+  };
+
+  if (loading || userId === undefined) {
     return (
-      <View style={styles.center}>
+      <SafeAreaView style={styles.loadingWrap}>
         <ActivityIndicator />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome{email ? `, ${email}` : ""} 👋</Text>
-      <Text style={styles.subtitle}>This is your Home screen.</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.eyebrow}>Welcome</Text>
+          <Text style={styles.title}>{profileLoading ? '...' : (profile?.full_name || 'User')}</Text>
+        </View>
+        <Pressable onPress={signOut} style={styles.signOutBtn}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </Pressable>
+      </View>
 
-      {/* Example primary action */}
-      <Pressable style={styles.primaryBtn} onPress={() => { /* TODO: navigate to your app section */ }}>
-        <Text style={styles.primaryBtnText}>Go to Projects</Text>
-        <Ionicons name="arrow-forward" size={18} color="#fff" />
-      </Pressable>
+      {/* Error */}
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>Couldn’t load projects: {error}</Text>
+          <Pressable onPress={refetch} style={[styles.primaryBtn, { marginTop: 12 }]}>
+            <Text style={styles.primaryBtnText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : projects.length === 0 ? (
+        // Empty state
+<View style={styles.emptyWrap}>
+  <Text style={styles.emptyTitle}>Let’s start your first project</Text>
+  <Text style={styles.emptySubtitle}>
+    Create a project to track tasks, hours, and reports.
+  </Text>
 
-      {/* Sign out */}
-      <Pressable style={styles.secondaryBtn} onPress={signOut}>
-        <Ionicons name="log-out-outline" size={18} color={COLORS.purple} />
-        <Text style={styles.secondaryBtnText}>Sign out</Text>
-      </Pressable>
-    </View>
+  <Pressable onPress={goNew} style={styles.bigAddCircle}>
+    <Text style={styles.bigAddText}>+</Text>
+  </Pressable>
+</View>
+
+
+
+      ) : (
+        // Projects list
+        <View style={{ flex: 1 }}>
+          <View style={styles.summaryRow}>
+            <View style={styles.card}>
+              <Text style={styles.cardNum}>{projects.length}</Text>
+              <Text style={styles.cardLabel}>Your Projects</Text>
+            </View>
+            <View style={styles.card}>
+              <Text style={styles.cardNum}>
+                {projects.filter(p => (p.status ?? 'active').toLowerCase() === 'active').length}
+              </Text>
+              <Text style={styles.cardLabel}>Active</Text>
+            </View>
+          </View>
+
+          <View style={styles.listHeaderRow}>
+            <Text style={styles.sectionTitle}>Recent</Text>
+            <Pressable onPress={goNew}><Text style={styles.link}>+ New</Text></Pressable>
+          </View>
+
+          <FlatList
+            data={projects}
+            keyExtractor={(item) => item.id}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+            renderItem={({ item }) => (
+              <Pressable onPress={() => openProject(item.id)} style={styles.projectCard}>
+                <Text style={styles.projectName}>{item.name}</Text>
+                <Text numberOfLines={2} style={styles.projectDesc}>{item.description || 'No description'}</Text>
+                <View style={styles.badgeRow}>
+                  <View style={[
+                    styles.badge,
+                    (item.status ?? 'active').toLowerCase() === 'active' ? styles.badgeActive : styles.badgeMuted
+                  ]}>
+                    <Text style={styles.badgeText}>{(item.status ?? 'active').toUpperCase()}</Text>
+                  </View>
+                </View>
+              </Pressable>
+            )}
+          />
+        </View>
+      )}
+    </SafeAreaView>
   );
 }

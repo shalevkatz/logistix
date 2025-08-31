@@ -29,7 +29,7 @@ const friendlyError = (msg: string) => {
 
 export default function SignUpScreen() {
   // state
-  const [username, setUsername]   = useState('');
+  const [full_name, setFullName]   = useState('');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [confirm, setConfirm]     = useState('');
@@ -47,14 +47,14 @@ export default function SignUpScreen() {
 
   const canCreate =
     !loading &&
-    username.trim().length > 0 &&
+    full_name.trim().length > 0 &&
     isEmail(email) &&
     password.length >= 6 &&
     confirm === password;
 
   const onSignup = async () => {
     // basic client checks
-    if (!username || !email || !password || !confirm) return setError('Please fill all fields');
+    if (!full_name || !email || !password || !confirm) return setError('Please fill all fields');
     if (!isEmail(email)) return setError('Invalid email');
     if (password.length < 6) return setError('Password must be at least 6 characters');
     if (password !== confirm) return setError('Passwords do not match');
@@ -65,7 +65,7 @@ export default function SignUpScreen() {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { full_name: username.trim() } },
+        options: { data: { full_name: full_name.trim() } },
       });
       if (error) throw error;
 
@@ -105,15 +105,15 @@ export default function SignUpScreen() {
               <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
                 {!!error && <Text style={s.error}>{error}</Text>}
 
-                {/* Username */}
+                {/* Full Name */}
                 <View style={s.inputRow}>
                   <Ionicons name="person-outline" size={18} color={COLORS.placeholder} />
                   <TextInput
                     style={s.inputFlex}
-                    placeholder=" Username"
+                    placeholder=" Full Name"
                     placeholderTextColor={COLORS.placeholder}
-                    value={username}
-                    onChangeText={(t) => { setUsername(t); if (error) setError(null); }}
+                    value={full_name}
+                    onChangeText={(t) => { setFullName(t); if (error) setError(null); }}
                     returnKeyType="next"
                     onSubmitEditing={() => emailRef.current?.focus()}
                     textContentType="name"

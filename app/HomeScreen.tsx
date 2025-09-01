@@ -83,7 +83,9 @@ useEffect(() => {
     Create a project to track tasks, hours, and reports.
   </Text>
 
-  <Pressable onPress={goNew} style={styles.bigAddCircle}>
+  <Pressable onPress={() => {console.log('nav -> /create-project');
+    router.push('/create-project');
+  }}  style={styles.bigAddCircle}>
     <Text style={styles.bigAddText}>+</Text>
   </Pressable>
 </View>

@@ -5,9 +5,20 @@ import { supabase } from '../lib/supabase';
 export type Project = {
   id: string;
   owner_id: string;
-  name: string;
+  title: string | null;                    // נשתמש תמיד ב-title בקוד
   description: string | null;
-  status: string | null;
+  priority: 'Low' | 'Medium' | 'High' | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type Row = {
+  id: string;
+  owner_id: string;
+  title?: string | null;                  // אולי קיים
+  name?: string | null;                   // לגרסאות ישנות
+  description: string | null;
+  priority: 'Low' | 'Medium' | 'High' | null;
   created_at: string;
   updated_at: string;
 };
@@ -16,64 +27,65 @@ export function useProjects(userId?: string) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true); // <- track if component is still mounted
+  const mountedRef = useRef(true);
 
-  const safeSetState = <T,>(setter: (val: T) => void, val: T) => {
-    if (mountedRef.current) setter(val);
+  const safeSet = <T,>(setter: (v: T) => void, v: T) => {
+    if (mountedRef.current) setter(v);
   };
 
   const fetchProjects = useCallback(async () => {
-    if (!userId) {
-      safeSetState(setProjects, []);
-      safeSetState(setLoading, false);
-      return;
-    }
-    safeSetState(setLoading, true);
-    safeSetState(setError, null);
+    if (!userId) return;
+    try {
+      safeSet(setLoading, true);
+      safeSet(setError, null);
 
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('owner_id', userId)
-      .order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('projects')
+        // נבקש גם title וגם name כדי לתמוך בשתי הסכמות
+        .select('id, owner_id, title, name, description, priority, created_at, updated_at')
+        .eq('owner_id', userId)
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      safeSetState(setError, error.message);
-      safeSetState(setProjects, []);
-    } else {
-      safeSetState(setProjects, data ?? []);
+      if (error) throw error;
+
+      const mapped: Project[] = (data as Row[]).map((r) => ({
+        id: r.id,
+        owner_id: r.owner_id,
+        title: (r.title ?? r.name ?? null),
+        description: r.description ?? null,
+        priority: r.priority ?? null,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }));
+
+      safeSet(setProjects, mapped);
+    } catch (e: any) {
+      safeSet(setError, e.message ?? 'Failed loading projects');
+      safeSet(setProjects, []);
+    } finally {
+      safeSet(setLoading, false);
     }
-    safeSetState(setLoading, false);
   }, [userId]);
 
   useEffect(() => {
     mountedRef.current = true;
     fetchProjects();
 
-    // 🔄 Realtime: refetch when this user's projects change
-    // (insert/update/delete)
+    // רענון בריל-טיים על כל שינוי בטבלת projects של המשתמש
     let channel: ReturnType<typeof supabase.channel> | null = null;
     if (userId) {
       channel = supabase
         .channel(`projects-user-${userId}`)
         .on(
           'postgres_changes',
-          {
-            event: '*',                 // insert | update | delete
-            schema: 'public',
-            table: 'projects',
-            filter: `owner_id=eq.${userId}`,
-          },
-          () => {
-            fetchProjects();           // re-fetch list on any change
-          }
+          { event: '*', schema: 'public', table: 'projects', filter: `owner_id=eq.${userId}` },
+          () => fetchProjects()
         )
         .subscribe();
     }
-
     return () => {
       mountedRef.current = false;
-      if (channel) supabase.removeChannel(channel); // cleanup realtime
+      if (channel) supabase.removeChannel(channel);
     };
   }, [fetchProjects, userId]);
 

@@ -1,5 +1,5 @@
 // app/HomeScreen.tsx
-import { Href, useRouter } from 'expo-router';
+import { Href, useFocusEffect, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +29,13 @@ useEffect(() => {
 }, []);
 
   const { projects, loading, error, refetch } = useProjects(userId);
+  
+  useFocusEffect(
+    React.useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
@@ -101,9 +108,6 @@ useEffect(() => {
               <Text style={styles.cardLabel}>Your Projects</Text>
             </View>
             <View style={styles.card}>
-              <Text style={styles.cardNum}>
-                {projects.filter(p => (p.status ?? 'active').toLowerCase() === 'active').length}
-              </Text>
               <Text style={styles.cardLabel}>Active</Text>
             </View>
           </View>
@@ -120,16 +124,8 @@ useEffect(() => {
             contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
             renderItem={({ item }) => (
               <Pressable onPress={() => openProject(item.id)} style={styles.projectCard}>
-                <Text style={styles.projectName}>{item.name}</Text>
+                <Text style={styles.projectName}>{item.title}</Text>
                 <Text numberOfLines={2} style={styles.projectDesc}>{item.description || 'No description'}</Text>
-                <View style={styles.badgeRow}>
-                  <View style={[
-                    styles.badge,
-                    (item.status ?? 'active').toLowerCase() === 'active' ? styles.badgeActive : styles.badgeMuted
-                  ]}>
-                    <Text style={styles.badgeText}>{(item.status ?? 'active').toUpperCase()}</Text>
-                  </View>
-                </View>
               </Pressable>
             )}
           />

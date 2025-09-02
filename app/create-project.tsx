@@ -26,7 +26,6 @@ const projectSchema = z.object({
   client_name: z.string().optional(),
   location: z.string().optional(),
   budget: z.number().nonnegative().optional(), // parsed as number | undefined
-  status: z.enum(['Planned', 'In Progress', 'On Hold', 'Completed']),
   priority: z.enum(['Low', 'Medium', 'High']),
   description: z.string().optional(),
   employee_ids: z.array(z.string()),
@@ -123,7 +122,6 @@ export default function CreateProjectScreen() {
       client_name: '',
       location: '',
       budget: undefined,         // number | undefined
-      status: 'Planned',
       priority: 'Medium',
       description: '',
       employee_ids: [],                  // string[]
@@ -176,22 +174,21 @@ export default function CreateProjectScreen() {
   client_name: values.client_name || null,
   location: values.location || null,
   budget: values.budget ?? null,
-  status: values.status,
   priority: values.priority,
   description: values.description || null,
-  assigned_employee_ids: values.employee_ids, 
-  start_date: values.start_date ? values.start_date.toISOString() : null,
-  due_date: values.due_date ? values.due_date.toISOString() : null,
+  assigned_employee_ids: values.employee_ids,
+  start_date: values.start_date ? values.start_date.toISOString().split('T')[0] : null,
+  due_date: values.due_date ? values.due_date.toISOString().split('T')[0] : null,
   owner_id: user.id,
 };
 
 
-      const { error } = await supabase.from('projects').insert(payload);
+      const { error } = await supabase.from('projects').insert([payload]);
       if (error) throw error;
 
       Alert.alert('Created ✅', 'Your project was created successfully.');
       reset();
-      router.back();
+      router.replace({ pathname: '/', params: { r: String(Date.now()) } });
     } catch (e: any) {
       console.error(e);
       Alert.alert('Error', e?.message ?? 'Failed to create project.');
@@ -282,16 +279,6 @@ export default function CreateProjectScreen() {
 
         {/* Status & Priority */}
         <View style={[s.hstack, s.mt8]}>
-          <View style={[s.col, s.mr10]}>
-            <Text style={s.label}>Status</Text>
-            <Controller
-              control={control}
-              name="status"
-              render={({ field: { value, onChange } }) => (
-                <RNPicker value={value} onChange={onChange} items={['Planned', 'In Progress', 'On Hold', 'Completed']} />
-              )}
-            />
-          </View>
           <View style={s.col}>
             <Text style={s.label}>Priority</Text>
             <Controller
@@ -330,7 +317,7 @@ export default function CreateProjectScreen() {
 <Text style={[s.label, s.mt8]}>Assign employees</Text>
 
 {loadingEmployees ? (
-  <Text style={s.help}>Loading employees…</Text>
+  <ActivityIndicator />
 ) : employees.length === 0 ? (
   <Text style={s.help}>
     You have no employees yet. Create some first (e.g., in your Employees screen).

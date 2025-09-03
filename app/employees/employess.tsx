@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, Text, TextInput, View } from 'react-native';
-import { supabase } from '../lib/supabase';
-import { s } from '../styles/CreateProject.styles';
+import { supabase } from '../../lib/supabase';
+import { s } from '../../styles/CreateProject.styles';
 
 type Emp = { id: string; full_name: string; email: string | null };
 

@@ -74,6 +74,13 @@ useEffect(() => {
         </Pressable>
       </View>
 
+      <Pressable
+  style={{ backgroundColor: '#6C63FF', marginTop: 16 }}
+  onPress={() => router.push('/projects/562b02e9-2364-4c08-84e9-b2fb94df8ee7/site-map')}
+>
+  <Text style={{ color: 'white' }}>Test Site Map</Text>
+</Pressable>
+
       {/* Error */}
       {error ? (
         <View style={styles.errorBox}>

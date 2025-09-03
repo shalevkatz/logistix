@@ -1,7 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
   ActivityIndicator,
@@ -16,16 +17,16 @@ import {
 } from 'react-native';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase';
-import { s } from '../styles/CreateProject.styles'; // <-- your .js styles file
+import { s } from '../styles/CreateProject.styles';
 
 // -----------------------------
-// Schema & Types (parsed shapes)
+// Schema & Types
 // -----------------------------
 const projectSchema = z.object({
   title: z.string().min(2, 'Project name is too short'),
   client_name: z.string().optional(),
   location: z.string().optional(),
-  budget: z.number().nonnegative().optional(), // parsed as number | undefined
+  budget: z.number().nonnegative().optional(),
   priority: z.enum(['Low', 'Medium', 'High']),
   description: z.string().optional(),
   employee_ids: z.array(z.string()),
@@ -96,20 +97,14 @@ const DateField = ({
   );
 };
 
-
-
-
-
-
 // -----------------------------
 // Screen
 // -----------------------------
 export default function CreateProjectScreen() {
   const [submitting, setSubmitting] = useState(false);
-
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
-  // IMPORTANT: defaultValues use the PARSED shapes of ProjectForm
+
   const {
     control,
     handleSubmit,
@@ -121,25 +116,26 @@ export default function CreateProjectScreen() {
       title: '',
       client_name: '',
       location: '',
-      budget: undefined,         // number | undefined
+      budget: undefined,
       priority: 'Medium',
       description: '',
-      employee_ids: [],                  // string[]
+      employee_ids: [],
       start_date: undefined,
       due_date: undefined,
     },
   });
 
-  React.useEffect(() => {
-  let mounted = true;
-  (async () => {
+  // Fetch employees
+  const fetchEmployees = useCallback(async () => {
     try {
       setLoadingEmployees(true);
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
-      if (!user) return;
+      if (!user) {
+        setEmployees([]);
+        return;
+      }
 
-      // Adjust table/column names if yours differ:
       const { data, error } = await supabase
         .from('employees')
         .select('id, full_name')
@@ -147,55 +143,66 @@ export default function CreateProjectScreen() {
         .order('full_name', { ascending: true });
 
       if (error) throw error;
-      if (mounted) setEmployees(data || []);
+      setEmployees(data || []);
     } catch (e) {
       console.error(e);
     } finally {
-      if (mounted) setLoadingEmployees(false);
+      setLoadingEmployees(false);
     }
-  })();
-  return () => {
-    mounted = false;
-  };
-}, []);
+  }, []);
 
-  const onSubmit = async (values: ProjectForm) => {
-    try {
-      setSubmitting(true);
-      const { data: auth } = await supabase.auth.getUser();
-      const user = auth.user;
-      if (!user) {
-        Alert.alert('Not signed in', 'Please log in again.');
-        return;
-      }
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!mounted) return;
+      await fetchEmployees();
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [fetchEmployees]);
 
-      const payload = {
-  title: values.title,
-  client_name: values.client_name || null,
-  location: values.location || null,
-  budget: values.budget ?? null,
-  priority: values.priority,
-  description: values.description || null,
-  assigned_employee_ids: values.employee_ids,
-  start_date: values.start_date ? values.start_date.toISOString().split('T')[0] : null,
-  due_date: values.due_date ? values.due_date.toISOString().split('T')[0] : null,
-  owner_id: user.id,
+  useFocusEffect(
+    useCallback(() => {
+      fetchEmployees();
+    }, [fetchEmployees])
+  );
+
+const onSubmit = async (values: ProjectForm) => {
+  try {
+    setSubmitting(true);
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (!user) {
+      Alert.alert('Not signed in', 'Please log in again.');
+      return;
+    }
+
+    const payload = {
+      title: values.title,
+      client_name: values.client_name || null,
+      location: values.location || null,
+      budget: values.budget ?? null,
+      priority: values.priority,
+      description: values.description || null,
+      assigned_employee_ids: values.employee_ids,
+      start_date: values.start_date ? values.start_date.toISOString().split('T')[0] : null,
+      due_date: values.due_date ? values.due_date.toISOString().split('T')[0] : null,
+      owner_id: user.id,
+    };
+
+    // 👉 go to a dedicated creation flow that will create the project AFTER image save
+    router.push({
+      pathname: '../projects/new-site-map',
+      params: { payload: JSON.stringify(payload) },
+    });
+  } catch (e: any) {
+    console.error(e);
+    Alert.alert('Error', e?.message ?? 'Failed to continue.');
+  } finally {
+    setSubmitting(false);
+  }
 };
-
-
-      const { error } = await supabase.from('projects').insert([payload]);
-      if (error) throw error;
-
-      Alert.alert('Created ✅', 'Your project was created successfully.');
-      reset();
-      router.replace({ pathname: '/', params: { r: String(Date.now()) } });
-    } catch (e: any) {
-      console.error(e);
-      Alert.alert('Error', e?.message ?? 'Failed to create project.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -258,7 +265,7 @@ export default function CreateProjectScreen() {
           </View>
         </View>
 
-        {/* Budget (number | undefined in form state) */}
+        {/* Budget */}
         <Text style={[s.label, s.mt8]}>Budget (optional)</Text>
         <Controller
           control={control}
@@ -269,15 +276,15 @@ export default function CreateProjectScreen() {
               placeholder="e.g. 25000"
               placeholderTextColor="#9aa0a6"
               keyboardType="numeric"
-              value={value !== undefined ? String(value) : ''}                // display as string
-              onChangeText={(txt) => onChange(txt === '' ? undefined : Number(txt))} // store as number|undefined
+              value={value !== undefined ? String(value) : ''}
+              onChangeText={(txt) => onChange(txt === '' ? undefined : Number(txt))}
               onBlur={onBlur}
             />
           )}
         />
         {errors.budget && <Text style={s.error}>{errors.budget.message}</Text>}
 
-        {/* Status & Priority */}
+        {/* Priority */}
         <View style={[s.hstack, s.mt8]}>
           <View style={s.col}>
             <Text style={s.label}>Priority</Text>
@@ -313,45 +320,59 @@ export default function CreateProjectScreen() {
           </View>
         </View>
 
-        {/* Employees (assign to project) */}
-<Text style={[s.label, s.mt8]}>Assign employees</Text>
+        {/* Employees */}
+        <Text style={[s.label, s.mt8]}>Assign employees</Text>
 
-{loadingEmployees ? (
-  <ActivityIndicator />
-) : employees.length === 0 ? (
-  <Text style={s.help}>
-    You have no employees yet. Create some first (e.g., in your Employees screen).
-  </Text>
-) : (
-  <Controller
-    control={control}
-    name="employee_ids"
-    render={({ field: { value, onChange } }) => {
-      const selected = new Set(value || []);
-      const toggle = (id: string) => {
-        const next = new Set(selected);
-        next.has(id) ? next.delete(id) : next.add(id);
-        onChange(Array.from(next));
-      };
-      return (
-        <View style={s.chipsWrap}>
-          {employees.map((emp) => {
-            const active = selected.has(emp.id);
-            return (
-              <Pressable
-                key={emp.id}
-                onPress={() => toggle(emp.id)}
-                style={[s.chip, active ? s.chipActive : s.chipIdle]}
-              >
-                <Text style={s.chipText}>{emp.full_name}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      );
-    }}
-  />
-)}
+        {loadingEmployees ? (
+          <ActivityIndicator />
+        ) : employees.length === 0 ? (
+          <View>
+            <Text style={s.help}>You have no employees yet. Create some first.</Text>
+            <Pressable
+              style={[s.btnSecondary, { marginTop: 8 }]}
+              onPress={() => router.push('/employees/CreateEmployee')}
+            >
+              <Text style={s.btnText}>Add employee</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <Controller
+              control={control}
+              name="employee_ids"
+              render={({ field: { value, onChange } }) => {
+                const selected = new Set(value || []);
+                const toggle = (id: string) => {
+                  const next = new Set(selected);
+                  next.has(id) ? next.delete(id) : next.add(id);
+                  onChange(Array.from(next));
+                };
+                return (
+                  <View style={s.chipsWrap}>
+                    {employees.map((emp) => {
+                      const active = selected.has(emp.id);
+                      return (
+                        <Pressable
+                          key={emp.id}
+                          onPress={() => toggle(emp.id)}
+                          style={[s.chip, active ? s.chipActive : s.chipIdle]}
+                        >
+                          <Text style={s.chipText}>{emp.full_name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                );
+              }}
+            />
+            <Pressable
+              style={[s.btnSecondary, { marginTop: 8 }]}
+              onPress={() => router.push('/employees/CreateEmployee')}
+            >
+              <Text style={s.btnText}>Add another employee</Text>
+            </Pressable>
+          </>
+        )}
         {errors.employee_ids && <Text style={s.error}>{errors.employee_ids.message}</Text>}
 
         {/* Description */}
@@ -375,7 +396,7 @@ export default function CreateProjectScreen() {
 
         {/* Actions */}
         <Pressable style={s.btnPrimary} onPress={handleSubmit(onSubmit)} disabled={submitting}>
-          {submitting ? <ActivityIndicator /> : <Text style={s.btnText}>Create Project</Text>}
+          {submitting ? <ActivityIndicator /> : <Text style={s.btnText}>Continue • Add site map</Text>}
         </Pressable>
 
         <Pressable style={s.btnSecondary} onPress={() => router.back()} disabled={submitting}>

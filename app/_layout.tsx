@@ -1,7 +1,10 @@
 // app/_layout.tsx
+import 'react-native-gesture-handler'; // ensure RN Gesture Handler is initialized
+
 import { Stack, useRouter, useSegments } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '../lib/supabase';
 
 // Screens that do NOT require a session
@@ -9,7 +12,7 @@ const AUTH_SCREENS = new Set([
   'LoginScreen',
   'SignUpScreen',
   'ForgotPasswordScreen',
-  'reset',                  // your /reset deep link screen file name
+  'reset',
   'ResetPasswordConfirmScreen',
 ]);
 
@@ -49,10 +52,8 @@ function AuthGate() {
     const isAuthScreen = AUTH_SCREENS.has(current);
 
     if (!loggedIn && !isAuthScreen) {
-      // Not logged in and trying to access app screen -> go to Login
       router.replace('/LoginScreen');
     } else if (loggedIn && isAuthScreen) {
-      // Logged in but on an auth screen -> go to Home (index)
       router.replace('/');
     }
   }, [ready, loggedIn, current]);
@@ -70,5 +71,9 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
-  return <AuthGate />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthGate />
+    </GestureHandlerRootView>
+  );
 }

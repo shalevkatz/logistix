@@ -74,12 +74,6 @@ useEffect(() => {
         </Pressable>
       </View>
 
-      <Pressable
-  style={{ backgroundColor: '#6C63FF', marginTop: 16 }}
-  onPress={() => router.push('/projects/562b02e9-2364-4c08-84e9-b2fb94df8ee7/site-map')}
->
-  <Text style={{ color: 'white' }}>Test Site Map</Text>
-</Pressable>
 
       {/* Error */}
       {error ? (
@@ -97,11 +91,9 @@ useEffect(() => {
     Create a project to track tasks, hours, and reports.
   </Text>
 
-  <Pressable onPress={() => {console.log('nav -> /create-project');
-    router.push('/create-project');
-  }}  style={styles.bigAddCircle}>
-    <Text style={styles.bigAddText}>+</Text>
-  </Pressable>
+<Pressable onPress={() => router.push('/create-project')} style={styles.bigAddCircle}>
+  <Text style={styles.bigAddText}>+</Text>
+</Pressable>
 </View>
 
 
@@ -121,7 +113,9 @@ useEffect(() => {
 
           <View style={styles.listHeaderRow}>
             <Text style={styles.sectionTitle}>Recent</Text>
-            <Pressable onPress={goNew}><Text style={styles.link}>+ New</Text></Pressable>
+            <Pressable onPress={() => router.push('/create-project')}>
+              <Text style={styles.link}>+ New</Text>
+            </Pressable>
           </View>
 
           <FlatList

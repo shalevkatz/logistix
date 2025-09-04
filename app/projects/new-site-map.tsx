@@ -1,261 +1,144 @@
 // app/projects/new-site-map.tsx
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useRef, useState } from 'react';
-import { Alert, Image, LayoutChangeEvent, Pressable, ScrollView, Text, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import SitePlanner from '../../components/SitePlanner'; // our drop-in Canvas+Palette
 import { supabase } from '../../lib/supabase';
 
-type MarkerType = 'CCTV' | 'Cable' | 'AP';
-type Marker = { x: number; y: number; type: MarkerType; note?: string };
+type Payload = {
+  title: string;
+  client_name: string | null;
+  location: string | null;
+  budget: number | null;
+  priority: 'Low' | 'Medium' | 'High';
+  description: string | null;
+  assigned_employee_ids: string[];
+  start_date: string | null; // yyyy-mm-dd
+  due_date: string | null;   // yyyy-mm-dd
+  owner_id: string;
+};
 
-export default function NewSiteMapScreen() {
-  // We receive all project fields (NOT created yet) via `payload` param as JSON
-  const { payload: payloadStr } = useLocalSearchParams<{ payload?: string }>();
-
-  // Parse payload safely
-  let projectPayload: Record<string, any> | null = null;
-  try {
-    projectPayload = payloadStr ? JSON.parse(payloadStr) : null;
-  } catch {
-    projectPayload = null;
-  }
+export default function NewSiteMap() {
+  const { payload } = useLocalSearchParams<{ payload: string }>();
+  const form = JSON.parse(payload ?? '{}') as Payload;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
-  const [viewSize, setViewSize] = useState<{ w: number; h: number } | null>(null);
-  const [type, setType] = useState<MarkerType>('CCTV');
-  const [markers, setMarkers] = useState<Marker[]>([]);
-  const imageRef = useRef<any>(null);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Pick the site plan image (local first; we upload on save when we have IDs)
   const pickImage = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted' && lib.status !== 'granted') {
-      Alert.alert('Permission required', 'We need camera or library access.');
-      return;
-    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
+      quality: 1,
     });
-    if (!res.canceled && res.assets?.length) {
-      const asset = res.assets[0];
-      setImageUri(asset.uri);
-      if (asset.width && asset.height) {
-        setNaturalSize({ w: asset.width, h: asset.height });
-      } else {
-        // fallback to fetch natural size
-        Image.getSize(asset.uri, (w, h) => setNaturalSize({ w, h }), () => {});
-      }
+    if (!res.canceled) {
+      setImageUri(res.assets[0].uri);
     }
   };
 
-  const onImgLayout = (e: LayoutChangeEvent) => {
-    const { width } = e.nativeEvent.layout;
-    if (naturalSize) {
-      const ratio = naturalSize.h / naturalSize.w;
-      setViewSize({ w: width, h: width * ratio });
-    }
-  };
-
-  const addMarker = (evt: any) => {
-    if (!viewSize || !naturalSize) return;
-    const { locationX, locationY } = evt.nativeEvent;
-    // Normalize to [0,1]
-    const x = Math.max(0, Math.min(1, locationX / viewSize.w));
-    const y = Math.max(0, Math.min(1, locationY / viewSize.h));
-    setMarkers((prev) => [...prev, { x, y, type }]);
-  };
-
-  const colorFor = (t: MarkerType) =>
-    t === 'CCTV' ? '#ff4757' : t === 'Cable' ? '#ffa502' : '#1e90ff';
-
-  const save = async () => {
+  // Save: create project -> site_map -> upload image -> update path
+  const saveAll = async () => {
     try {
-      // Guards
-      if (!projectPayload) {
-        Alert.alert('Error', 'Missing project details. Please go back and try again.');
-        return;
-      }
+      setSaving(true);
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
-      if (!user) {
-        Alert.alert('Not signed in', 'Please log in again.');
-        return;
-      }
-      if (!imageUri) {
-        Alert.alert('Image required', 'Please select or take a site map photo.');
-        return;
-      }
+      if (!user) throw new Error('Not signed in');
 
-      setSaving(true);
-
-      // 1) Upload image to Storage
-      const filename = `${user.id}/pending/${Date.now()}.jpg`;
-      const resp = await fetch(imageUri);
-      const blob = await resp.blob();
-
-      const { data: up, error: upErr } = await supabase.storage
-        .from('site-maps')
-        .upload(filename, blob, { contentType: 'image/jpeg', upsert: false });
-      if (upErr) throw upErr;
-
-      // 2) Create the project and get its id
+      // 1) Create project
       const { data: proj, error: projErr } = await supabase
         .from('projects')
-        .insert([projectPayload])
+        .insert({
+          title: form.title,
+          client_name: form.client_name,
+          location: form.location,
+          budget: form.budget,
+          priority: form.priority,
+          description: form.description,
+          assigned_employee_ids: form.assigned_employee_ids,
+          start_date: form.start_date,
+          due_date: form.due_date,
+          owner_id: form.owner_id,
+        })
         .select('id')
         .single();
-      if (projErr) throw projErr;
 
-      // 3) Insert the site map row linked to the new project
-      const { error: mapErr } = await supabase.from('site_maps').insert([
-        {
-          project_id: proj.id,
+      if (projErr) throw projErr;
+      const projectId = proj.id as string;
+
+      // 2) Create an empty site_map row
+      const { data: sm, error: smErr } = await supabase
+        .from('site_maps')
+        .insert({
+          project_id: projectId,
           owner_id: user.id,
-          image_path: up.path,
-          markers, // jsonb
-        },
-      ]);
-      if (mapErr) {
-        // Rollback project create if map save fails
-        await supabase.from('projects').delete().eq('id', proj.id);
-        throw mapErr;
+          image_path: null,
+          markers: [],
+        })
+        .select('id')
+        .single();
+
+      if (smErr) throw smErr;
+      const siteMapId = sm.id as string;
+
+      // 3) Upload image (if chosen)
+      if (imageUri) {
+        setUploading(true);
+        const blob = await fetch(imageUri).then((r) => r.blob());
+        const path = `${projectId}/${siteMapId}.jpg`;
+
+        const up = await supabase.storage.from('sitemaps').upload(path, blob, { upsert: true });
+        if (up.error) throw up.error;
+
+        const upd = await supabase.from('site_maps').update({ image_path: path }).eq('id', siteMapId);
+        if (upd.error) throw upd.error;
+        setUploading(false);
       }
 
-      Alert.alert('Setup complete ✅', 'Project created with site map.');
-      router.replace({ pathname: '/', params: { r: String(Date.now()) } });
+      Alert.alert('Success', 'Project created.');
+      router.replace('/'); // go back home or projects list
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Error', e?.message ?? 'Failed to create project with site map.');
+      Alert.alert('Error', e?.message ?? 'Failed to save project');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, backgroundColor: '#0f0f10', flexGrow: 1 }}>
-      <Text style={{ color: 'white', fontSize: 22, fontWeight: '700', marginBottom: 4 }}>
-        Add Site Map
-      </Text>
-      <Text style={{ color: '#9aa0a6', marginBottom: 12 }}>
-        Step 2 of 2 — Add a site map to complete project creation.
-      </Text>
+    <View style={{ flex: 1, padding: 16, backgroundColor: '#0b1020' }}>
+      <Text style={{ color: 'white', fontSize: 22, fontWeight: '800', marginBottom: 6 }}>Add Site Map</Text>
+      <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>Step 2 of 2 — Add a site map to complete project creation.</Text>
 
-      {/* Type picker */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-        {(['CCTV', 'Cable', 'AP'] as MarkerType[]).map((t) => {
-          const active = type === t;
-          return (
-            <Pressable
-              key={t}
-              onPress={() => setType(t)}
-              style={{
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                borderRadius: 10,
-                backgroundColor: active ? colorFor(t) : '#17181b',
-              }}
-            >
-              <Text style={{ color: 'white', fontWeight: '700' }}>{t}</Text>
-            </Pressable>
-          );
-        })}
+      {/* Actions above planner */}
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+        <Pressable onPress={pickImage} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
+          <Text style={{ color: 'white' }}>{imageUri ? 'Change Image' : 'Upload Image'}</Text>
+        </Pressable>
+        <Pressable onPress={() => setImageUri(null)} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
+          <Text style={{ color: 'white' }}>Clear</Text>
+        </Pressable>
       </View>
 
-      {/* Image picker */}
-      {!imageUri ? (
-        <Pressable
-          onPress={pickImage}
-          style={{
-            backgroundColor: '#17181b',
-            borderWidth: 1,
-            borderColor: '#2a2b2f',
-            borderRadius: 12,
-            padding: 16,
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 160,
-          }}
-        >
-          <Text style={{ color: '#9aa0a6' }}>Tap to choose site image</Text>
+      {/* NEW planner (Canvas + Palette) */}
+      <View style={{ flex: 1 }}>
+        <SitePlanner imageUrl={imageUri} />
+      </View>
+
+      {/* Footer buttons */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
+        <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#1f2937', padding: 16, borderRadius: 14, alignItems: 'center' }}>
+          <Text style={{ color: 'white' }}>Back</Text>
         </Pressable>
-      ) : (
-        <View>
-          <View onLayout={onImgLayout}>
-            {viewSize && (
-              <View style={{ width: viewSize.w }}>
-                <Pressable onPress={addMarker}>
-                  <Image
-                    ref={imageRef}
-                    source={{ uri: imageUri }}
-                    style={{ width: viewSize.w, height: viewSize.h, borderRadius: 12 }}
-                    resizeMode="contain"
-                  />
-                  {/* Markers overlay */}
-                  <View
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      width: viewSize.w,
-                      height: viewSize.h,
-                    }}
-                    pointerEvents="none"
-                  >
-                    <Svg width={viewSize.w} height={viewSize.h}>
-                      {markers.map((m, idx) => (
-                        <Circle
-                          key={idx}
-                          cx={m.x * viewSize.w}
-                          cy={m.y * viewSize.h}
-                          r={8}
-                          fill={colorFor(m.type)}
-                        />
-                      ))}
-                    </Svg>
-                  </View>
-                </Pressable>
-              </View>
-            )}
-          </View>
-
-          {/* Actions */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-            <Pressable
-              onPress={() => setMarkers([])}
-              style={{
-                flex: 1,
-                backgroundColor: '#2a2b2f',
-                borderRadius: 12,
-                paddingVertical: 14,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: 'white', fontWeight: '700' }}>Clear</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={save}
-              disabled={saving}
-              style={{
-                flex: 1,
-                backgroundColor: saving ? '#4e49b0' : '#6C63FF',
-                borderRadius: 12,
-                paddingVertical: 14,
-                alignItems: 'center',
-                opacity: saving ? 0.9 : 1,
-              }}
-            >
-              <Text style={{ color: 'white', fontWeight: '700' }}>
-                {saving ? 'Saving…' : 'Save & Create Project'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-    </ScrollView>
+        <Pressable
+          onPress={saveAll}
+          disabled={saving || uploading}
+          style={{ flex: 1, backgroundColor: '#7c3aed', padding: 16, borderRadius: 14, alignItems: 'center', opacity: saving || uploading ? 0.6 : 1 }}
+        >
+          {saving || uploading ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: '700' }}>Save & Create Project</Text>}
+        </Pressable>
+      </View>
+    </View>
   );
 }

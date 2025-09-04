@@ -55,5 +55,5 @@ export const s = StyleSheet.create({
   },
   chipIdle: { borderColor: '#2d2d42', backgroundColor: 'transparent' },
   chipActive: { borderColor: '#6c4cff', backgroundColor: '#2a235e' },
-  chipText: { color: 'white', fontSize: 12 },
+  chipText: { color: 'white', fontSize: 16 },
 });

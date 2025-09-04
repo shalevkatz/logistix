@@ -3,8 +3,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
-import SitePlanner from '../../components/SitePlanner'; // our drop-in Canvas+Palette
+import SitePlanner from '../../components/SitePlanner';
 import { supabase } from '../../lib/supabase';
+import { ensureSafePhoto } from '../../utils/image';
 
 type Payload = {
   title: string;
@@ -23,22 +24,35 @@ export default function NewSiteMap() {
   const { payload } = useLocalSearchParams<{ payload: string }>();
   const form = JSON.parse(payload ?? '{}') as Payload;
 
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [safeUri, setSafeUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Pick the site plan image (local first; we upload on save when we have IDs)
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1,
-    });
-    if (!res.canceled) {
-      setImageUri(res.assets[0].uri);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+      });
+      if (res.canceled) return;
+
+      // STRICT: always downscale + compress before we ever render
+      const original = res.assets[0].uri;
+      const processed = await ensureSafePhoto(original);
+
+      // extra guard: don't accept images we failed to shrink for some reason
+      if (!processed) {
+        Alert.alert('Image Error', 'Could not process image. Please choose a different photo.');
+        return;
+      }
+
+      setSafeUri(processed);
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Image Error', e?.message ?? 'Failed to load image.');
     }
   };
 
-  // Save: create project -> site_map -> upload image -> update path
   const saveAll = async () => {
     try {
       setSaving(true);
@@ -67,7 +81,7 @@ export default function NewSiteMap() {
       if (projErr) throw projErr;
       const projectId = proj.id as string;
 
-      // 2) Create an empty site_map row
+      // 2) Create empty site_map
       const { data: sm, error: smErr } = await supabase
         .from('site_maps')
         .insert({
@@ -78,14 +92,14 @@ export default function NewSiteMap() {
         })
         .select('id')
         .single();
-
       if (smErr) throw smErr;
+
       const siteMapId = sm.id as string;
 
-      // 3) Upload image (if chosen)
-      if (imageUri) {
+      // 3) Upload (STRICT: upload the already-downscaled version)
+      if (safeUri) {
         setUploading(true);
-        const blob = await fetch(imageUri).then((r) => r.blob());
+        const blob = await fetch(safeUri).then((r) => r.blob());
         const path = `${projectId}/${siteMapId}.jpg`;
 
         const up = await supabase.storage.from('sitemaps').upload(path, blob, { upsert: true });
@@ -93,11 +107,12 @@ export default function NewSiteMap() {
 
         const upd = await supabase.from('site_maps').update({ image_path: path }).eq('id', siteMapId);
         if (upd.error) throw upd.error;
+
         setUploading(false);
       }
 
       Alert.alert('Success', 'Project created.');
-      router.replace('/'); // go back home or projects list
+      router.replace('/'); // or your projects list
     } catch (e: any) {
       console.error(e);
       Alert.alert('Error', e?.message ?? 'Failed to save project');
@@ -109,24 +124,24 @@ export default function NewSiteMap() {
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: '#0b1020' }}>
       <Text style={{ color: 'white', fontSize: 22, fontWeight: '800', marginBottom: 6 }}>Add Site Map</Text>
-      <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>Step 2 of 2 — Add a site map to complete project creation.</Text>
+      <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>
+        Step 2 of 2 — Add a site map (we optimize large photos automatically).
+      </Text>
 
-      {/* Actions above planner */}
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
         <Pressable onPress={pickImage} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
-          <Text style={{ color: 'white' }}>{imageUri ? 'Change Image' : 'Upload Image'}</Text>
+          <Text style={{ color: 'white' }}>{safeUri ? 'Change Image' : 'Upload Image'}</Text>
         </Pressable>
-        <Pressable onPress={() => setImageUri(null)} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
+        <Pressable onPress={() => setSafeUri(null)} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
           <Text style={{ color: 'white' }}>Clear</Text>
         </Pressable>
       </View>
 
-      {/* NEW planner (Canvas + Palette) */}
+      {/* STRICT: the planner only ever sees the safe, downscaled URI */}
       <View style={{ flex: 1 }}>
-        <SitePlanner imageUrl={imageUri} />
+        <SitePlanner imageUrl={safeUri} />
       </View>
 
-      {/* Footer buttons */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
         <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#1f2937', padding: 16, borderRadius: 14, alignItems: 'center' }}>
           <Text style={{ color: 'white' }}>Back</Text>

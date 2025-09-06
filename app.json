@@ -13,12 +13,13 @@
       "bundleIdentifier": "com.yourname.logistix"
     },
     "android": {
+      "package": "com.yourname.logistix",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff",
-        "package": "com.yourname.logistix"
+        "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "newArchEnabled": false
     },
     "web": {
       "bundler": "metro",

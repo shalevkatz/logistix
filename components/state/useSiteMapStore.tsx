@@ -49,7 +49,15 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
 
   setMode: (m) => set({ mode: m }),
   setDeviceToPlace: (t) => set({ deviceToPlace: t }),
-  setViewport: (v) => set((s) => ({ viewport: { ...s.viewport, ...v } })),
+  setViewport: (v) =>
+  set((s) => {
+    const next = { ...s.viewport, ...v };
+    const same =
+      next.scale === s.viewport.scale &&
+      next.translateX === s.viewport.translateX &&
+      next.translateY === s.viewport.translateY;
+    return same ? s : { viewport: next };
+  }),
 
   addNodeAt: (x, y, type) =>
     set((s) => ({

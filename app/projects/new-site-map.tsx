@@ -3,8 +3,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+
 import SitePlanner from '../../components/SitePlanner';
 import { supabase } from '../../lib/supabase';
+import { uploadSiteMapAndGetPath } from '../../lib/uploadSiteMap'; // <-- correct import
 import { ensureSafePhoto } from '../../utils/image';
 
 type Payload = {
@@ -25,8 +27,7 @@ export default function NewSiteMap() {
   const form = JSON.parse(payload ?? '{}') as Payload;
 
   const [safeUri, setSafeUri] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const pickImage = async () => {
     try {
@@ -36,17 +37,14 @@ export default function NewSiteMap() {
       });
       if (res.canceled) return;
 
-      // STRICT: always downscale + compress before we ever render
-      const original = res.assets[0].uri;
-      const processed = await ensureSafePhoto(original);
-
-      // extra guard: don't accept images we failed to shrink for some reason
-      if (!processed) {
+      // Always downscale/compress BEFORE rendering or uploading
+      const originalUri = res.assets[0].uri;
+      const processedUri = await ensureSafePhoto(originalUri);
+      if (!processedUri) {
         Alert.alert('Image Error', 'Could not process image. Please choose a different photo.');
         return;
       }
-
-      setSafeUri(processed);
+      setSafeUri(processedUri);
     } catch (e: any) {
       console.error(e);
       Alert.alert('Image Error', e?.message ?? 'Failed to load image.');
@@ -55,12 +53,13 @@ export default function NewSiteMap() {
 
   const saveAll = async () => {
     try {
-      setSaving(true);
+      setBusy(true);
+
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
       if (!user) throw new Error('Not signed in');
 
-      // 1) Create project
+      // 1) Create project row first
       const { data: proj, error: projErr } = await supabase
         .from('projects')
         .insert({
@@ -73,7 +72,7 @@ export default function NewSiteMap() {
           assigned_employee_ids: form.assigned_employee_ids,
           start_date: form.start_date,
           due_date: form.due_date,
-          owner_id: form.owner_id,
+          owner_id: form.owner_id, // or user.id if you prefer
         })
         .select('id')
         .single();
@@ -81,43 +80,29 @@ export default function NewSiteMap() {
       if (projErr) throw projErr;
       const projectId = proj.id as string;
 
-      // 2) Create empty site_map
-      const { data: sm, error: smErr } = await supabase
-        .from('site_maps')
-        .insert({
-          project_id: projectId,
-          owner_id: user.id,
-          image_path: null,
-          markers: [],
-        })
-        .select('id')
-        .single();
-      if (smErr) throw smErr;
-
-      const siteMapId = sm.id as string;
-
-      // 3) Upload (STRICT: upload the already-downscaled version)
+      // 2) Upload the image (if present) and get the STORAGE PATH
+      // If you want to require an image, enforce it; otherwise allow null.
+      let imagePath: string | null = null;
       if (safeUri) {
-        setUploading(true);
-        const blob = await fetch(safeUri).then((r) => r.blob());
-        const path = `${projectId}/${siteMapId}.jpg`;
-
-        const up = await supabase.storage.from('sitemaps').upload(path, blob, { upsert: true });
-        if (up.error) throw up.error;
-
-        const upd = await supabase.from('site_maps').update({ image_path: path }).eq('id', siteMapId);
-        if (upd.error) throw upd.error;
-
-        setUploading(false);
+        imagePath = await uploadSiteMapAndGetPath(safeUri, user.id); // returns e.g. `${user.id}/${nanoid}.jpg`
       }
 
+      // 3) Create site_maps row, passing the non-null image path if we have it
+      const { error: smErr } = await supabase.from('site_maps').insert({
+        project_id: projectId,
+        owner_id: user.id,
+        image_path: imagePath, // if your column is NOT NULL, ensure safeUri was chosen first
+        markers: [],           // or whatever default you use
+      });
+      if (smErr) throw smErr;
+
       Alert.alert('Success', 'Project created.');
-      router.replace('/'); // or your projects list
+      router.replace('/'); // go back to list
     } catch (e: any) {
       console.error(e);
       Alert.alert('Error', e?.message ?? 'Failed to save project');
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
 
@@ -137,7 +122,7 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
-      {/* STRICT: the planner only ever sees the safe, downscaled URI */}
+      {/* Only ever render the downscaled image */}
       <View style={{ flex: 1 }}>
         <SitePlanner imageUrl={safeUri} />
       </View>
@@ -148,10 +133,10 @@ export default function NewSiteMap() {
         </Pressable>
         <Pressable
           onPress={saveAll}
-          disabled={saving || uploading}
-          style={{ flex: 1, backgroundColor: '#7c3aed', padding: 16, borderRadius: 14, alignItems: 'center', opacity: saving || uploading ? 0.6 : 1 }}
+          disabled={busy}
+          style={{ flex: 1, backgroundColor: '#7c3aed', padding: 16, borderRadius: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}
         >
-          {saving || uploading ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: '700' }}>Save & Create Project</Text>}
+          {busy ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: '700' }}>Save & Create Project</Text>}
         </Pressable>
       </View>
     </View>

@@ -1,10 +1,11 @@
 // components/DeviceIcon.tsx
-import { SVG_ICONS } from '@/assets/icons';
 import React, { useRef } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
+import { SVG_ICONS } from '../assets/icons';
 import { DeviceType, useSiteMapStore } from './state/useSiteMapStore';
+
 
 export default function DeviceIcon({
   id, x, y, selected, type,
@@ -75,7 +76,7 @@ export default function DeviceIcon({
 
         {/* Dark icon for white plans */}
         {/* Prefer `color` if your SVGs use `currentColor`; otherwise try `fill` or `stroke` */}
-        <Icon width={SIZE} height={SIZE} color="#111827" />
+        <Icon width={SIZE} height={SIZE} color="#111827" fill="#111827" stroke="#111827" />
       </View>
     </GestureDetector>
   );

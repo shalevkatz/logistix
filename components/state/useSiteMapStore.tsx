@@ -1,4 +1,3 @@
-// state/useSiteMapStore.ts
 import { nanoid } from 'nanoid/non-secure';
 import { create } from 'zustand';
 
@@ -27,38 +26,46 @@ type SiteMapState = {
   selectedId: string | null;
   deviceToPlace: DeviceType | null;
   viewport: Viewport;
+
   setMode: (m: Mode) => void;
   setDeviceToPlace: (t: DeviceType | null) => void;
   setViewport: (v: Partial<Viewport>) => void;
+
   addNodeAt: (x: number, y: number, type?: DeviceType) => void;
   moveNode: (id: string, dx: number, dy: number) => void;
   select: (id: string | null) => void;
+
   startCable: (x: number, y: number) => void;
   addCablePoint: (x: number, y: number) => void;
   finishCable: () => void;
   moveCablePoint: (cableId: string, index: number, dx: number, dy: number) => void;
+
   clearAll: () => void;
 };
 
 export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   nodes: [],
   cables: [],
-  mode: 'select',
+  mode: 'select', // <- never 'idle'
   selectedId: null,
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
-  clearAll: () => set({ nodes: [], cables: [], mode: 'select', selectedId: null, deviceToPlace: null }),
+
   setMode: (m) => set({ mode: m }),
   setDeviceToPlace: (t) => set({ deviceToPlace: t }),
+
   setViewport: (v) =>
-  set((s) => {
-    const next = { ...s.viewport, ...v };
-    const same =
-      next.scale === s.viewport.scale &&
-      next.translateX === s.viewport.translateX &&
-      next.translateY === s.viewport.translateY;
-    return same ? s : { viewport: next };
-  }),
+    set((s) => {
+      const next = { ...s.viewport, ...v };
+      const same =
+        next.scale === s.viewport.scale &&
+        next.translateX === s.viewport.translateX &&
+        next.translateY === s.viewport.translateY;
+      return same ? s : { viewport: next };
+    }),
+
+  clearAll: () =>
+    set({ nodes: [], cables: [], mode: 'select', selectedId: null, deviceToPlace: null }),
 
   addNodeAt: (x, y, type) =>
     set((s) => ({
@@ -78,16 +85,30 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   select: (id) => set({ selectedId: id }),
 
   startCable: (x, y) =>
-    set((s) => ({ cables: [...s.cables, { id: nanoid(), points: [{ x, y }] }], mode: 'draw-cable' })),
-  addCablePoint: (x, y) =>
     set((s) => ({
-      cables: s.cables.length
-        ? s.cables.map((c, i) =>
-            i === s.cables.length - 1 ? { ...c, points: [...c.points, { x, y }] } : c
-          )
-        : s.cables,
+      cables: [...s.cables, { id: nanoid(), points: [{ x, y }] }],
+      mode: 'draw-cable',
     })),
-  finishCable: () => set({ mode: 'select' }),
+
+  addCablePoint: (x, y) =>
+    set((s) => {
+      if (!s.cables.length) return s;
+      const last = s.cables[s.cables.length - 1];
+      const nextLast = { ...last, points: [...last.points, { x, y }] };
+      return { cables: [...s.cables.slice(0, -1), nextLast] };
+    }),
+
+  finishCable: () =>
+    set((s) => {
+      if (!s.cables.length) return { mode: 'select' };
+      const last = s.cables[s.cables.length - 1];
+      const keep = last.points.length >= 2; // if only a single point, drop it
+      return {
+        cables: keep ? s.cables : s.cables.slice(0, -1),
+        mode: 'select',
+      };
+    }),
+
   moveCablePoint: (cableId, index, dx, dy) =>
     set((s) => ({
       cables: s.cables.map((c) =>

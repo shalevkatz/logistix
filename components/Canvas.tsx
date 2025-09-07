@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import Svg, { Image as SvgImage } from 'react-native-svg';
 import Cable from './Cable';
-import DeviceNode from './DeviceNode';
+import DeviceIcon from './DeviceIcon';
 import { useSiteMapStore } from './state/useSiteMapStore';
 
 export default function Canvas({
@@ -29,6 +29,8 @@ export default function Canvas({
     select,
   } = useSiteMapStore();
 
+  const deviceToPlace = useSiteMapStore((s) => s.deviceToPlace);
+  const startCable = useSiteMapStore((s) => s.startCable);
   const scale = useSharedValue(viewport.scale);
   const tx = useSharedValue(viewport.translateX);
   const ty = useSharedValue(viewport.translateY);
@@ -66,16 +68,24 @@ export default function Canvas({
     });
 
   const tap = Gesture.Tap().onEnd((e) => {
-    const x = (e.x - tx.value) / scale.value;
-    const y = (e.y - ty.value) / scale.value;
-    if (mode === 'place-device') {
-      runOnJS(addNodeAt)(x, y);
-    } else if (mode === 'draw-cable') {
-      runOnJS(addCablePoint)(x, y);
+  const x = (e.x - tx.value) / scale.value;
+  const y = (e.y - ty.value) / scale.value;
+
+  if (mode === 'place-device') {
+    // Place a device of the selected type at (x,y)
+    runOnJS(addNodeAt)(x, y, deviceToPlace ?? undefined);
+  } else if (mode === 'draw-cable') {
+    // Start cable on first tap, extend on next taps
+    const last = cables[cables.length - 1];
+    if (!last) {
+      runOnJS(startCable)(x, y);
     } else {
-      runOnJS(select)(null);
+      runOnJS(addCablePoint)(x, y);
     }
-  });
+  } else {
+    runOnJS(select)(null);
+  }
+});
 
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
@@ -92,25 +102,37 @@ export default function Canvas({
   if (!imageUri) return <ActivityIndicator />;
 
   return (
-    <GestureDetector gesture={composed}>
-      <Animated.View style={[{ width, height, overflow: 'hidden', backgroundColor: '#0b1020' }, style]}>
-        <Svg width={width} height={height}>
-          <SvgImage
-            href={{ uri: imageUri }}
-            x={0}
-            y={0}
-            width={width}
-            height={height}
-            preserveAspectRatio="xMidYMid meet"
+  <GestureDetector gesture={composed}>
+    <Animated.View style={[{ width, height, overflow: 'hidden', backgroundColor: '#0b1020' }, style]}>
+      <Svg width={width} height={height}>
+        <SvgImage
+          href={{ uri: imageUri! }}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          preserveAspectRatio="xMidYMid meet"
+        />
+        {cables.map((c) => (
+          <Cable key={c.id} id={c.id} points={c.points} />
+        ))}
+        {/* ⛔️ Remove nodes here (these were the grey circles) */}
+      </Svg>
+
+      {/* ✅ Add this overlay layer for icons */}
+      <View style={{ position: 'absolute', inset: 0 }}>
+        {nodes.map((n) => (
+          <DeviceIcon
+            key={n.id}
+            id={n.id}
+            x={n.x}
+            y={n.y}
+            selected={selectedId === n.id}
+            type={n.type}
           />
-          {cables.map((c) => (
-            <Cable key={c.id} id={c.id} points={c.points} />
-          ))}
-          {nodes.map((n) => (
-            <DeviceNode key={n.id} id={n.id} x={n.x} y={n.y} selected={selectedId === n.id} type={n.type} />
-          ))}
-        </Svg>
-      </Animated.View>
-    </GestureDetector>
-  );
+        ))}
+      </View>
+    </Animated.View>
+  </GestureDetector>
+);
 }

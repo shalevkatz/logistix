@@ -1,12 +1,12 @@
 // app/projects/new-site-map.tsx
+import { useSiteMapStore } from '@/components/state/useSiteMapStore';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
-
 import SitePlanner from '../../components/SitePlanner';
 import { supabase } from '../../lib/supabase';
-import { uploadSiteMapAndGetPath } from '../../lib/uploadSiteMap'; // <-- correct import
+import { uploadSiteMapAndGetPath } from '../../lib/uploadSiteMap';
 import { ensureSafePhoto } from '../../utils/image';
 
 type Payload = {
@@ -17,8 +17,8 @@ type Payload = {
   priority: 'Low' | 'Medium' | 'High';
   description: string | null;
   assigned_employee_ids: string[];
-  start_date: string | null; // yyyy-mm-dd
-  due_date: string | null;   // yyyy-mm-dd
+  start_date: string | null;
+  due_date: string | null;
   owner_id: string;
 };
 
@@ -26,6 +26,7 @@ export default function NewSiteMap() {
   const { payload } = useLocalSearchParams<{ payload: string }>();
   const form = JSON.parse(payload ?? '{}') as Payload;
 
+  const clearAll = useSiteMapStore((s) => s.clearAll);
   const [safeUri, setSafeUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,7 +38,6 @@ export default function NewSiteMap() {
       });
       if (res.canceled) return;
 
-      // Always downscale/compress BEFORE rendering or uploading
       const originalUri = res.assets[0].uri;
       const processedUri = await ensureSafePhoto(originalUri);
       if (!processedUri) {
@@ -54,12 +54,10 @@ export default function NewSiteMap() {
   const saveAll = async () => {
     try {
       setBusy(true);
-
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
       if (!user) throw new Error('Not signed in');
 
-      // 1) Create project row first
       const { data: proj, error: projErr } = await supabase
         .from('projects')
         .insert({
@@ -72,32 +70,29 @@ export default function NewSiteMap() {
           assigned_employee_ids: form.assigned_employee_ids,
           start_date: form.start_date,
           due_date: form.due_date,
-          owner_id: form.owner_id, // or user.id if you prefer
+          owner_id: form.owner_id,
         })
         .select('id')
         .single();
-
       if (projErr) throw projErr;
+
       const projectId = proj.id as string;
 
-      // 2) Upload the image (if present) and get the STORAGE PATH
-      // If you want to require an image, enforce it; otherwise allow null.
       let imagePath: string | null = null;
       if (safeUri) {
-        imagePath = await uploadSiteMapAndGetPath(safeUri, user.id); // returns e.g. `${user.id}/${nanoid}.jpg`
+        imagePath = await uploadSiteMapAndGetPath(safeUri, user.id);
       }
 
-      // 3) Create site_maps row, passing the non-null image path if we have it
       const { error: smErr } = await supabase.from('site_maps').insert({
         project_id: projectId,
         owner_id: user.id,
-        image_path: imagePath, // if your column is NOT NULL, ensure safeUri was chosen first
-        markers: [],           // or whatever default you use
+        image_path: imagePath,
+        markers: [],
       });
       if (smErr) throw smErr;
 
       Alert.alert('Success', 'Project created.');
-      router.replace('/'); // go back to list
+      router.replace('/');
     } catch (e: any) {
       console.error(e);
       Alert.alert('Error', e?.message ?? 'Failed to save project');
@@ -117,12 +112,21 @@ export default function NewSiteMap() {
         <Pressable onPress={pickImage} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
           <Text style={{ color: 'white' }}>{safeUri ? 'Change Image' : 'Upload Image'}</Text>
         </Pressable>
-        <Pressable onPress={() => setSafeUri(null)} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
+
+        <Pressable
+          onPress={() => {
+            // optional confirm
+            Alert.alert('Clear everything?', 'This removes all placed devices and cables.', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Clear', style: 'destructive', onPress: clearAll },
+            ]);
+          }}
+          style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}
+        >
           <Text style={{ color: 'white' }}>Clear</Text>
         </Pressable>
       </View>
 
-      {/* Only ever render the downscaled image */}
       <View style={{ flex: 1 }}>
         <SitePlanner imageUrl={safeUri} />
       </View>

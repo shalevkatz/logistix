@@ -1,10 +1,10 @@
 // app/_layout.tsx
-import 'react-native-gesture-handler'; // ensure RN Gesture Handler is initialized
-
 import { Stack, useRouter, useSegments } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import 'react-native-gesture-handler'; // ensure RN Gesture Handler is initialized
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import 'react-native-get-random-values'; // ensure crypto.getRandomValues is available
 import { supabase } from '../lib/supabase';
 
 // Screens that do NOT require a session

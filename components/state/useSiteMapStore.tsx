@@ -1,5 +1,5 @@
 // state/useSiteMapStore.ts
-import { nanoid } from 'nanoid';
+import { nanoid } from 'nanoid/non-secure';
 import { create } from 'zustand';
 
 export type DeviceType = 'cctv' | 'nvr' | 'ap' | 'switch' | 'router';
@@ -37,6 +37,7 @@ type SiteMapState = {
   addCablePoint: (x: number, y: number) => void;
   finishCable: () => void;
   moveCablePoint: (cableId: string, index: number, dx: number, dy: number) => void;
+  clearAll: () => void;
 };
 
 export const useSiteMapStore = create<SiteMapState>((set, get) => ({
@@ -46,7 +47,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   selectedId: null,
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
-
+  clearAll: () => set({ nodes: [], cables: [], mode: 'select', selectedId: null, deviceToPlace: null }),
   setMode: (m) => set({ mode: m }),
   setDeviceToPlace: (t) => set({ deviceToPlace: t }),
   setViewport: (v) =>

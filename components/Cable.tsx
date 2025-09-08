@@ -1,25 +1,36 @@
-//Draggable cable points
-
 import React from 'react';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
-import { Circle, G, Polyline } from 'react-native-svg';
-import { useSiteMapStore } from './state/useSiteMapStore';
+import { Path } from 'react-native-svg';
 
-export default function Cable({ id, points }: { id: string; points: { x: number; y: number }[] }) {
-  const movePoint = useSiteMapStore((s) => s.moveCablePoint);
+type P = { x: number; y: number };
 
+export default function Cable({
+  id,
+  points,
+  color = '#3b82f6',
+}: {
+  id: string;
+  points: P[];
+  color?: string;
+}) {
+  if (!points.length) return null;
+  const d = toPath(points);
   return (
-    <G>
-      <Polyline points={points.map((p) => `${p.x},${p.y}`).join(' ')} stroke="#22d3ee" strokeWidth={3} fill="none" />
-      {points.map((p, i) => {
-        const pan = Gesture.Pan().onChange((e) => runOnJS(movePoint)(id, i, e.changeX, e.changeY));
-        return (
-          <GestureDetector key={i} gesture={pan}>
-            <Circle cx={p.x} cy={p.y} r={8} fill="#22d3ee" />
-          </GestureDetector>
-        );
-      })}
-    </G>
+    <Path
+      d={d}
+      fill="none"
+      stroke={color}
+      strokeWidth={3}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   );
 }
+
+function toPath(points: P[]) {
+  const [h, ...t] = points;
+  return `M ${round(h.x)} ${round(h.y)} ` + t.map(p => `L ${round(p.x)} ${round(p.y)}`).join(' ');
+}
+const round = (n: number) => Math.round(n * 100) / 100;
+
+
+

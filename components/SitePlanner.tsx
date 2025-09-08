@@ -8,15 +8,17 @@ export default function SitePlanner({ imageUrl }: { imageUrl?: string | null }) 
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   useEffect(() => {
-    setImageUri(imageUrl ?? 'https://images.unsplash.com/photo-1523419409543-a92f96acb84a?w=1600');
+    setImageUri(imageUrl ?? null);
   }, [imageUrl]);
+
+  const paletteWidth = imageUri ? 120 : 0;
 
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#0b1020', borderRadius: 16, overflow: 'hidden' }}>
       <View style={{ flex: 1 }}>
-        <Canvas width={width - 120} height={height * 0.62} imageUri={imageUri} />
+        <Canvas width={width - paletteWidth} height={height * 0.62} imageUri={imageUri} />
       </View>
-      <Palette />
+      {!!imageUri && <Palette />}
     </View>
   );
 }

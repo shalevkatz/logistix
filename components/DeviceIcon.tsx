@@ -1,83 +1,84 @@
 // components/DeviceIcon.tsx
-import React, { useRef } from 'react';
+import React, { memo } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
-import { SVG_ICONS } from '../assets/icons';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import DeviceGlyph from './DeviceGlyph';
 import { DeviceType, useSiteMapStore } from './state/useSiteMapStore';
 
+type Props = {
+  id: string;
+  x: number;
+  y: number;
+  selected: boolean;
+  type: DeviceType;
+};
 
-export default function DeviceIcon({
-  id, x, y, selected, type,
-}: { id: string; x: number; y: number; selected: boolean; type: DeviceType }) {
-  const moveNode = useSiteMapStore(s => s.moveNode);
-  const select   = useSiteMapStore(s => s.select);
-  const { scale } = useSiteMapStore(s => s.viewport);
+function DeviceIconImpl({ id, x, y, selected, type }: Props) {
+  const moveNode = useSiteMapStore((s) => s.moveNode);
+  const select = useSiteMapStore((s) => s.select);
+  const viewportScale = useSiteMapStore((s) => s.viewport.scale);
 
-  const lastDX = useRef(0);
-  const lastDY = useRef(0);
-
-  const nudgeBy = (id: string, dx: number, dy: number) =>
-    moveNode(id, dx / scale, dy / scale);
-
-  const commitDrag = () => {};
+  const dx = useSharedValue(0);
+  const dy = useSharedValue(0);
 
   const pan = Gesture.Pan()
     .onStart(() => {
       'worklet';
-      lastDX.current = 0;
-      lastDY.current = 0;
       runOnJS(select)(id);
     })
     .onChange((e) => {
       'worklet';
-      const dx = e.changeX;
-      const dy = e.changeY;
-      runOnJS(nudgeBy)(id, dx, dy);
+      const inv = 1 / viewportScale;
+      dx.value = e.translationX * inv;
+      dy.value = e.translationY * inv;
     })
     .onEnd(() => {
       'worklet';
-      runOnJS(commitDrag)();
+      const cdx = dx.value;
+      const cdy = dy.value;
+      dx.value = 0;
+      dy.value = 0;
+      runOnJS(moveNode)(id, cdx, cdy);
     });
 
-  const tap = Gesture.Tap().onEnd(() => select(id));
-  const composed = Gesture.Simultaneous(pan, tap);
+  const tap = Gesture.Tap().onEnd(() => {
+    'worklet';
+    runOnJS(select)(id);
+  });
 
-  const SIZE = 24;
-  const RING = 18;
+  const gesture = Gesture.Simultaneous(pan, tap);
 
-  // Pick the right SVG component for this device type
-  const Icon = SVG_ICONS[type];
+  // Fixed positioning with left/top so it composes with the parent's transform
+  const SIZE = 50;            // touch box size (world units)
+  const R = 14;               // visual circle radius
+  const aStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: x + dx.value - SIZE / 2,
+    top: y + dy.value - SIZE / 2,
+    width: SIZE,
+    height: SIZE,
+  }));
 
   return (
-    <GestureDetector gesture={composed}>
-      <View
-        style={{
-          position: 'absolute',
-          left: x - SIZE / 2,
-          top: y - SIZE / 2,
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: SIZE + 8,
-          height: SIZE + 8,
-          borderRadius: 999,
-        }}
-      >
-        {selected && (
-          <View
-            style={{
-              position: 'absolute',
-              width: RING * 2, height: RING * 2, borderRadius: RING,
-              backgroundColor: 'rgba(124,58,237,0.16)',
-              borderWidth: 1, borderColor: '#7c3aed',
-            }}
-          />
-        )}
-
-        {/* Dark icon for white plans */}
-        {/* Prefer `color` if your SVGs use `currentColor`; otherwise try `fill` or `stroke` */}
-        <Icon width={SIZE} height={SIZE} color="#111827" fill="#111827" stroke="#111827" />
-      </View>
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={aStyle} pointerEvents="box-none">
+        <View
+          style={{
+            flex: 1,
+            borderRadius: R,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: selected ? 'rgba(124,58,237,0.16)' : 'transparent',
+            borderWidth: selected ? 2 / viewportScale : 0,
+            borderColor: '#7c3aed',
+          }}
+        >
+          <DeviceGlyph type={type} size={SIZE} color="#ffffff" />
+        </View>
+      </Animated.View>
     </GestureDetector>
   );
 }
+
+export default memo(DeviceIconImpl);

@@ -1,7 +1,7 @@
-import { MaterialCommunityIcons as MIcon } from '@expo/vector-icons'; // used for Cable + Check
+import { MaterialCommunityIcons as MIcon } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import DeviceGlyph from './DeviceGlyph'; // ← make sure the file is named exactly this
+import DeviceGlyph from './DeviceGlyph';
 import { DeviceType, useSiteMapStore } from './state/useSiteMapStore';
 
 type Item = { label: string; type: DeviceType };
@@ -26,10 +26,11 @@ export default function Palette() {
     mode === 'place-device' && deviceToPlace === t;
 
   const Button = ({
-    children, active, onPress, bg = '#1b2034',
-  }: { children: React.ReactNode; active?: boolean; onPress: () => void; bg?: string }) => (
+    children, active, onPress, bg = '#1b2034', disabled,
+  }: { children: React.ReactNode; active?: boolean; onPress: () => void; bg?: string; disabled?: boolean }) => (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => ({
         paddingVertical: 10,
         paddingHorizontal: 12,
@@ -37,7 +38,7 @@ export default function Palette() {
         backgroundColor: active ? '#2a2f49' : bg,
         borderWidth: active ? 1 : 0,
         borderColor: active ? '#7c3aed' : 'transparent',
-        opacity: pressed ? 0.85 : 1,
+        opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
       })}
     >
       {children}
@@ -53,48 +54,51 @@ export default function Palette() {
         borderLeftWidth: 1,
         borderLeftColor: '#262b3d',
         gap: 8,
+        justifyContent: 'space-between', // actions at bottom
       }}
     >
-      <Text style={{ color: 'white', fontWeight: '600', marginBottom: 4 }}>Palette</Text>
+      <View style={{ gap: 8 }}>
+        <Text style={{ color: 'white', fontWeight: '600', marginBottom: 4 }}>Palette</Text>
 
-      {/* Device buttons use your SVGs */}
-      {deviceItems.map((it) => (
+        {deviceItems.map((it) => (
+          <Button
+            key={it.type}
+            active={isDeviceSelected(it.type)}
+            onPress={() => {
+              setDeviceToPlace(it.type);
+              setMode('place-device');
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <DeviceGlyph type={it.type} size={18} color="#e5e7eb" />
+              <Text style={{ color: 'white' }}>{it.label}</Text>
+            </View>
+          </Button>
+        ))}
+
         <Button
-          key={it.type}
-          active={isDeviceSelected(it.type)}
-          onPress={() => {
-            setDeviceToPlace(it.type);
-            setMode('place-device');
-          }}
+          active={mode === 'draw-cable'}
+          bg="#2b3050"
+          onPress={() => setMode('draw-cable')}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <DeviceGlyph type={it.type} size={18} color="#e5e7eb" />
-            <Text style={{ color: 'white' }}>{it.label}</Text>
+            <MIcon name="link-variant" size={18} color="#a78bfa" />
+            <Text style={{ color: 'white' }}>Cable</Text>
           </View>
         </Button>
-      ))}
 
-      {/* Cable button */}
-      <Button
-        active={mode === 'draw-cable'}
-        bg="#2b3050"
-        onPress={() => setMode('draw-cable')}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <MIcon name="link-variant" size={18} color="#a78bfa" />
-          <Text style={{ color: 'white' }}>Cable</Text>
-        </View>
-      </Button>
+        {mode === 'draw-cable' && (
+          <Button onPress={() => { finishCable(); setMode('select'); }} bg="#7c3aed">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MIcon name="check" size={18} color="white" />
+              <Text style={{ color: 'white', fontWeight: '600' }}>Finish Cable</Text>
+            </View>
+          </Button>
+        )}
+      </View>
 
-      {/* Finish Cable → return to 'select' (not 'idle') */}
-      {mode === 'draw-cable' && (
-        <Button onPress={() => { finishCable(); setMode('select'); }} bg="#7c3aed">
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <MIcon name="check" size={18} color="white" />
-            <Text style={{ color: 'white', fontWeight: '600' }}>Finish Cable</Text>
-          </View>
-        </Button>
-      )}
+      {/* bottom actions could go here later (undo/redo/delete) */}
+      <View />
     </View>
   );
 }

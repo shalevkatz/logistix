@@ -1,4 +1,3 @@
-// app/projects/new-site-map.tsx
 import { useSiteMapStore } from '@/components/state/useSiteMapStore';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -115,7 +114,6 @@ export default function NewSiteMap() {
 
         <Pressable
           onPress={() => {
-            // optional confirm
             Alert.alert('Clear everything?', 'This removes all placed devices and cables.', [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Clear', style: 'destructive', onPress: clearAll },

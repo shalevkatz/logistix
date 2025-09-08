@@ -13,7 +13,7 @@ export type DeviceNode = {
 };
 
 export type CablePoint = { x: number; y: number };
-export type Cable = { id: string; points: CablePoint[] };
+export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean };
 
 export type Mode = 'select' | 'place-device' | 'draw-cable';
 
@@ -31,6 +31,8 @@ type SiteMapState = {
   setDeviceToPlace: (t: DeviceType | null) => void;
   setViewport: (v: Partial<Viewport>) => void;
 
+  clearAll: () => void;
+
   addNodeAt: (x: number, y: number, type?: DeviceType) => void;
   moveNode: (id: string, dx: number, dy: number) => void;
   select: (id: string | null) => void;
@@ -39,14 +41,28 @@ type SiteMapState = {
   addCablePoint: (x: number, y: number) => void;
   finishCable: () => void;
   moveCablePoint: (cableId: string, index: number, dx: number, dy: number) => void;
+};
 
-  clearAll: () => void;
+const COLOR_PALETTE = [
+  '#ef4444', // red
+  '#22c55e', // green
+  '#3b82f6', // blue
+  '#f59e0b', // amber
+  '#a855f7', // purple
+  '#06b6d4', // cyan
+  '#e11d48', // rose
+];
+
+const nextCableColor = (prev?: string) => {
+  if (!prev) return COLOR_PALETTE[0];
+  const idx = COLOR_PALETTE.indexOf(prev);
+  return COLOR_PALETTE[(idx + 1) % COLOR_PALETTE.length];
 };
 
 export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   nodes: [],
   cables: [],
-  mode: 'select', // <- never 'idle'
+  mode: 'select',
   selectedId: null,
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
@@ -85,15 +101,20 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   select: (id) => set({ selectedId: id }),
 
   startCable: (x, y) =>
-    set((s) => ({
-      cables: [...s.cables, { id: nanoid(), points: [{ x, y }] }],
-      mode: 'draw-cable',
-    })),
+    set((s) => {
+      const lastColor = s.cables[s.cables.length - 1]?.color;
+      const color = nextCableColor(lastColor);
+      return {
+        cables: [...s.cables, { id: nanoid(), color, points: [{ x, y }], finished: false }],
+        mode: 'draw-cable',
+      };
+    }),
 
   addCablePoint: (x, y) =>
     set((s) => {
       if (!s.cables.length) return s;
       const last = s.cables[s.cables.length - 1];
+      if (last.finished) return s;
       const nextLast = { ...last, points: [...last.points, { x, y }] };
       return { cables: [...s.cables.slice(0, -1), nextLast] };
     }),
@@ -102,9 +123,13 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
     set((s) => {
       if (!s.cables.length) return { mode: 'select' };
       const last = s.cables[s.cables.length - 1];
-      const keep = last.points.length >= 2; // if only a single point, drop it
+      if (last.finished) return { mode: 'select' };
+
+      const keep = last.points.length >= 2;
+      const updatedLast = { ...last, finished: true };
+
       return {
-        cables: keep ? s.cables : s.cables.slice(0, -1),
+        cables: keep ? [...s.cables.slice(0, -1), updatedLast] : s.cables.slice(0, -1),
         mode: 'select',
       };
     }),

@@ -1,20 +1,30 @@
 // components/Canvas.tsx
-import React, { useCallback, useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { MaterialCommunityIcons as MIcon } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import Svg, { Image as SvgImage } from 'react-native-svg';
 
-import Cable from './Cable';
+import CablePath from './Cable';
 import CableAnchors from './CableAnchors';
 import DeviceIcon from './DeviceIcon';
+import type { Cable as CableModel } from './state/useSiteMapStore';
 import { useSiteMapStore } from './state/useSiteMapStore';
 
-type Props = {
-  width: number;
-  height: number;
-  imageUri: string | null;
-};
+// ---------- helpers (pure JS) ----------
+function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const abx = bx - ax, aby = by - ay;
+  const apx = px - ax, apy = py - ay;
+  const ab2 = abx * abx + aby * aby || 1;
+  let t = (apx * abx + apy * aby) / ab2;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * abx;
+  const cy = ay + t * aby;
+  return Math.hypot(px - cx, py - cy);
+}
+
+type Props = { width: number; height: number; imageUri: string | null };
 
 export default function Canvas({ width, height, imageUri }: Props) {
   const {
@@ -28,18 +38,19 @@ export default function Canvas({ width, height, imageUri }: Props) {
     setViewport,
     selectedId,
     select,
+    selectedCableId,
+    selectCable,
   } = useSiteMapStore();
 
   const deviceToPlace = useSiteMapStore((s) => s.deviceToPlace);
   const startCable = useSiteMapStore((s) => s.startCable);
 
-  // viewport shared values (pan/zoom)
+  // --- pan/zoom shared values (keep hooks unconditional)
   const scale = useSharedValue(viewport.scale);
   const tx = useSharedValue(viewport.translateX);
   const ty = useSharedValue(viewport.translateY);
 
   useEffect(() => {
-    // push initial values into the store once
     setViewport({ scale: scale.value, translateX: tx.value, translateY: ty.value });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -51,7 +62,6 @@ export default function Canvas({ width, height, imageUri }: Props) {
     [setViewport]
   );
 
-  // Pan to move the canvas
   const pan = Gesture.Pan()
     .onChange((e) => {
       'worklet';
@@ -63,12 +73,10 @@ export default function Canvas({ width, height, imageUri }: Props) {
       runOnJS(commitViewport)(scale.value, tx.value, ty.value);
     });
 
-  // Pinch to zoom
   const pinch = Gesture.Pinch()
     .onChange((e) => {
       'worklet';
       const next = scale.value * e.scaleChange;
-      // clamp
       scale.value = Math.max(0.3, Math.min(4, next));
     })
     .onEnd(() => {
@@ -76,7 +84,28 @@ export default function Canvas({ width, height, imageUri }: Props) {
       runOnJS(commitViewport)(scale.value, tx.value, ty.value);
     });
 
-  // Single tap: place device / add cable point / start cable / clear selection
+  // JS-side selector (safe to call via runOnJS from worklets)
+  const selectNearestCableJS = useCallback(
+    (x: number, y: number) => {
+      let best: { c: CableModel; d: number } | null = null;
+      for (const c of cables) {
+        for (let i = 0; i < c.points.length - 1; i++) {
+          const a = c.points[i];
+          const b = c.points[i + 1];
+          const d = distPointToSeg(x, y, a.x, a.y, b.x, b.y);
+          if (d <= 16 && (!best || d < best.d)) best = { c, d };
+        }
+      }
+      if (best) {
+        selectCable(best.c.id);
+      } else {
+        selectCable(null);
+        select(null);
+      }
+    },
+    [cables, selectCable, select]
+  );
+
   const tap = Gesture.Tap().onEnd((e) => {
     'worklet';
     const x = (e.x - tx.value) / scale.value;
@@ -89,7 +118,6 @@ export default function Canvas({ width, height, imageUri }: Props) {
 
     if (mode === 'draw-cable') {
       const last = cables[cables.length - 1];
-      // If no cable or last one is finished → start a new cable
       if (!last || last.finished) {
         runOnJS(startCable)(x, y);
       } else {
@@ -98,17 +126,14 @@ export default function Canvas({ width, height, imageUri }: Props) {
       return;
     }
 
-    // select mode: clear selection on background tap
-    runOnJS(select)(null);
+    // selection mode — do the search on JS thread
+    runOnJS(selectNearestCableJS)(x, y);
   });
 
-  // Double tap: finish current cable
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      'worklet';
-      if (mode === 'draw-cable') runOnJS(finishCable)();
-    });
+  const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => {
+    'worklet';
+    if (mode === 'draw-cable') runOnJS(finishCable)();
+  });
 
   const composed = Gesture.Simultaneous(pan, pinch, Gesture.Exclusive(doubleTap, tap));
 
@@ -116,9 +141,7 @@ export default function Canvas({ width, height, imageUri }: Props) {
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
   }));
 
-  if (!imageUri) return <ActivityIndicator />;
-
-  // Show anchors only for the currently edited (unfinished) cable
+  // which cable shows anchors
   const activeCable =
     mode === 'draw-cable' &&
     cables.length > 0 &&
@@ -126,50 +149,74 @@ export default function Canvas({ width, height, imageUri }: Props) {
       ? cables[cables.length - 1]
       : null;
 
+  const selectedCableObj = useMemo(
+    () => cables.find((c) => c.id === selectedCableId) ?? null,
+    [cables, selectedCableId]
+  );
+
+  const anchorsFor = activeCable ?? selectedCableObj;
+
   return (
     <GestureDetector gesture={composed}>
-      <Animated.View
-        style={[
-          { width, height, overflow: 'hidden', backgroundColor: '#0b1020' },
-          aStyle,
-        ]}
-      >
-        <Svg width={width} height={height}>
-          <SvgImage
-            href={{ uri: imageUri }}
-            x={0}
-            y={0}
-            width={width}
-            height={height}
-            preserveAspectRatio="xMidYMid meet"
-          />
-          {cables.map((c) => (
-            <Cable key={c.id} id={c.id} points={c.points} color={c.color} />
-          ))}
-        </Svg>
+      <View style={{ width, height, backgroundColor: '#0b1020', overflow: 'hidden' }}>
+        {imageUri ? (
+          <Animated.View style={[{ width, height }, aStyle]}>
+            <Svg width={width} height={height}>
+              <SvgImage
+                href={{ uri: imageUri }}
+                x={0}
+                y={0}
+                width={width}
+                height={height}
+                preserveAspectRatio="xMidYMid meet"
+              />
+              {cables.map((c) => (
+                <CablePath key={c.id} id={c.id} points={c.points} color={c.color} />
+              ))}
+            </Svg>
 
-        {/* Overlay for interactive elements; shares the same transform as parent */}
-        <View style={{ position: 'absolute', inset: 0 }} pointerEvents="box-none">
-          {activeCable && (
-            <CableAnchors
-              cableId={activeCable.id}
-              points={activeCable.points}
-              color={activeCable.color}
-            />
-          )}
+            <View style={{ position: 'absolute', inset: 0 }} pointerEvents="box-none">
+              {anchorsFor && (
+                <CableAnchors
+                  cableId={anchorsFor.id}
+                  points={anchorsFor.points}
+                  color={anchorsFor.color}
+                />
+              )}
 
-          {nodes.map((n) => (
-            <DeviceIcon
-              key={n.id}
-              id={n.id}
-              x={n.x}
-              y={n.y}
-              selected={selectedId === n.id}
-              type={n.type}
-            />
-          ))}
-        </View>
-      </Animated.View>
+              {nodes.map((n) => (
+                <DeviceIcon
+                  key={n.id}
+                  id={n.id}
+                  x={n.x}
+                  y={n.y}
+                  selected={selectedId === n.id}
+                  type={n.type}
+                />
+              ))}
+            </View>
+          </Animated.View>
+        ) : (
+          // Placeholder (non-gesture, non-worklet)
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+              gap: 8,
+            }}
+          >
+            <MIcon name="image-plus" size={40} color="#94a3b8" />
+            <Text style={{ color: '#e5e7eb', fontSize: 16, fontWeight: '600' }}>
+              Upload image to add devices
+            </Text>
+            <Text style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>
+              Use the upload option to place devices and draw cables on your floor plan.
+            </Text>
+          </View>
+        )}
+      </View>
     </GestureDetector>
   );
 }

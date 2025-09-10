@@ -31,7 +31,6 @@ export default function NewSiteMap() {
   const [busy, setBusy] = useState(false);
   const [fmOpen, setFmOpen] = useState(false);
 
-  // Version-safe image picker (works with older expo-image-picker too)
   const pickImage = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -51,7 +50,6 @@ export default function NewSiteMap() {
 
       const uri: string | undefined =
         res?.assets?.[0]?.uri ?? (typeof res?.uri === 'string' ? res.uri : undefined);
-
       if (!uri) {
         Alert.alert('Image Error', 'No image selected. Please try again.');
         return;
@@ -76,6 +74,7 @@ export default function NewSiteMap() {
       const user = auth.user;
       if (!user) throw new Error('Not signed in');
 
+      // 1) Create project
       const { data: proj, error: projErr } = await supabase
         .from('projects')
         .insert({
@@ -96,6 +95,7 @@ export default function NewSiteMap() {
 
       const projectId = proj.id as string;
 
+      // 2) Optional: upload selected image and create a site_maps row
       let imagePath: string | null = null;
       if (safeUri) {
         imagePath = await uploadSiteMapAndGetPath(safeUri, user.id);
@@ -105,9 +105,25 @@ export default function NewSiteMap() {
         project_id: projectId,
         owner_id: user.id,
         image_path: imagePath,
-        markers: [],
+        markers: [], // keep your existing structure
       });
       if (smErr) throw smErr;
+
+      // 3) Persist floors (from FloorManager) into `floors` table
+      const localFloors =
+        ((useSiteMapStore.getState() as any)._localFloors as Array<{
+          name: string;
+          orderIndex: number;
+        }> | undefined) ?? [{ name: 'Floor 1', orderIndex: 0 }];
+
+      const rows = localFloors.map((f, i) => ({
+        project_id: projectId,
+        name: f?.name ?? `Floor ${i + 1}`,
+        order_index: Number.isFinite(f?.orderIndex) ? f.orderIndex : i,
+      }));
+
+      const { error: flErr } = await supabase.from('floors').insert(rows);
+      if (flErr) throw flErr;
 
       Alert.alert('Success', 'Project created.');
       router.replace('/');
@@ -121,7 +137,9 @@ export default function NewSiteMap() {
 
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: '#0b1020' }}>
-      <Text style={{ color: 'white', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Add Site Map</Text>
+      <Text style={{ color: 'white', fontSize: 22, fontWeight: '800' as const, marginBottom: 6 }}>
+        Add Site Map
+      </Text>
       <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>
         Step 2 of 2 — Add a site map (we optimize large photos automatically).
       </Text>
@@ -129,7 +147,12 @@ export default function NewSiteMap() {
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
         <Pressable
           onPress={pickImage}
-          style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}
+          style={{
+            backgroundColor: '#1f2937',
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 12,
+          }}
         >
           <Text style={{ color: 'white' }}>{safeUri ? 'Change Image' : 'Upload Image'}</Text>
         </Pressable>
@@ -141,7 +164,12 @@ export default function NewSiteMap() {
               { text: 'Clear', style: 'destructive', onPress: clearAll },
             ]);
           }}
-          style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}
+          style={{
+            backgroundColor: '#1f2937',
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 12,
+          }}
         >
           <Text style={{ color: 'white' }}>Clear</Text>
         </Pressable>
@@ -152,7 +180,7 @@ export default function NewSiteMap() {
         <SitePlanner imageUrl={safeUri} />
       </View>
 
-      {/* Manage Floors button — bottom CENTER (opens local modal) */}
+      {/* Manage Floors button — bottom CENTER (opens simple local modal) */}
       <View style={{ marginTop: 10, alignItems: 'center' }}>
         <Pressable
           onPress={() => setFmOpen(true)}
@@ -163,25 +191,54 @@ export default function NewSiteMap() {
             borderRadius: 999,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: 700 }}>Manage Floors</Text>
+          <Text style={{ color: 'white', fontWeight: '700' as const }}>Manage Floors</Text>
         </Pressable>
       </View>
 
       {/* Bottom actions */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
-        <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#1f2937', padding: 16, borderRadius: 14, alignItems: 'center' }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginTop: 12,
+        }}
+      >
+        <Pressable
+          onPress={() => router.back()}
+          style={{
+            flex: 1,
+            backgroundColor: '#1f2937',
+            padding: 16,
+            borderRadius: 14,
+            alignItems: 'center',
+          }}
+        >
           <Text style={{ color: 'white' }}>Back</Text>
         </Pressable>
         <Pressable
           onPress={saveAll}
           disabled={busy}
-          style={{ flex: 1, backgroundColor: '#7c3aed', padding: 16, borderRadius: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}
+          style={{
+            flex: 1,
+            backgroundColor: '#7c3aed',
+            padding: 16,
+            borderRadius: 14,
+            alignItems: 'center',
+            opacity: busy ? 0.6 : 1,
+          }}
         >
-          {busy ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: 700 }}>Save & Create Project</Text>}
+          {busy ? (
+            <ActivityIndicator />
+          ) : (
+            <Text style={{ color: 'white', fontWeight: '700' as const }}>
+              Save & Create Project
+            </Text>
+          )}
         </Pressable>
       </View>
 
-      {/* Local “layers” modal */}
+      {/* Simple Floors modal (local only; saved on submit) */}
       <FloorManager visible={fmOpen} onClose={() => setFmOpen(false)} />
     </View>
   );

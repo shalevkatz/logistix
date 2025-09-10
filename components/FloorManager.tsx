@@ -2,79 +2,77 @@ import React, { useEffect, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { useSiteMapStore } from './state/useSiteMapStore';
 
+// Local type for floors
 type Floor = { id: string; name: string; orderIndex: number };
 
-// tiny helpers
-const deepClone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
+// helpers
+const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 const makeId = () => `floor_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
-// fallback prompt for RN (dev-friendly)
-function promptLike(title: string, defaultValue = ''): string {
-  // @ts-ignore web only
-  if (typeof prompt !== 'undefined') {
-    const v = prompt(title, defaultValue);
-    return v?.trim() ?? '';
-  }
-  // simple inline prompt replacement via state (we’ll use a TextInput in-row)
-  return defaultValue;
-}
-
-type Props = { visible: boolean; onClose: () => void };
+type Props = {
+  visible: boolean;
+  onClose: () => void;
+};
 
 /**
- * Local-only Floor Manager
- * - Keeps an internal "floors" list and activeFloorId
- * - Captures current store nodes/cables into a per-floor map
- * - On switch: writes floor data back into the store (nodes/cables)
+ * FloorManager (local-only UX, but syncs floor list into Zustand under `_localFloors`)
+ * - Keeps its own list of floors (id, name, orderIndex)
+ * - Saves/loads nodes & cables per floor by reading/writing your existing store
+ * - No images here, no DB calls here
  */
 export default function FloorManager({ visible, onClose }: Props) {
-  // local floors state (independent of store)
+  // list & selection
   const [floors, setFloors] = useState<Floor[]>([]);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
+
+  // rename inline
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState<string>('');
 
-  // per-floor canvas data (nodes/cables) stored locally
+  // per-floor canvas data
   const [floorData, setFloorData] = useState<Record<string, { nodes: any[]; cables: any[] }>>({});
 
-  // access the global canvas state
+  // read current canvas
   const nodes = useSiteMapStore((s) => s.nodes);
   const cables = useSiteMapStore((s) => s.cables);
 
-  // handy setter to write canvas data back to the store
+  // write canvas
   const loadIntoStore = (n: any[], c: any[]) => {
     useSiteMapStore.setState({
-      nodes: deepClone(n),
-      cables: deepClone(c),
+      nodes: clone(n),
+      cables: clone(c),
       selectedId: undefined,
       selectedCableId: undefined,
     });
   };
 
-  // save current store nodes/cables into the current floor slot
+  // keep a copy of floors in the global store for Save step
+  const pushFloorsToGlobal = (list: Floor[]) => {
+    (useSiteMapStore as any).setState?.({
+      _localFloors: list.map(({ id, name, orderIndex }) => ({ id, name, orderIndex })),
+    });
+  };
+
+  // capture current canvas into a floor slot
   const captureCurrentInto = (floorId: string) => {
     setFloorData((prev) => ({
       ...prev,
-      [floorId]: {
-        nodes: deepClone(nodes),
-        cables: deepClone(cables),
-      },
+      [floorId]: { nodes: clone(nodes), cables: clone(cables) },
     }));
   };
 
-  // ensure at least one floor when modal opens; attach current canvas to Floor 1
+  // When opening the modal, ensure a default floor that mirrors current canvas
   useEffect(() => {
     if (!visible) return;
 
     if (floors.length === 0) {
       const first: Floor = { id: makeId(), name: 'Floor 1', orderIndex: 0 };
-      setFloors([first]);
+      const initial = [first];
+      setFloors(initial);
       setActiveFloorId(first.id);
-      setFloorData({
-        [first.id]: { nodes: deepClone(nodes), cables: deepClone(cables) },
-      });
+      setFloorData({ [first.id]: { nodes: clone(nodes), cables: clone(cables) } });
+      pushFloorsToGlobal(initial);
     } else if (activeFloorId && !floorData[activeFloorId]) {
-      // if missing data holder for some reason, attach it
       captureCurrentInto(activeFloorId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,14 +80,14 @@ export default function FloorManager({ visible, onClose }: Props) {
 
   const addFloor = () => {
     const f: Floor = { id: makeId(), name: `Floor ${floors.length + 1}`, orderIndex: floors.length };
-    // before switching away, capture current into the active
     if (activeFloorId) captureCurrentInto(activeFloorId);
 
-    setFloors((arr) => arr.concat(f));
+    const next = floors.concat(f);
+    setFloors(next);
     setFloorData((m) => ({ ...m, [f.id]: { nodes: [], cables: [] } }));
     setActiveFloorId(f.id);
-    // clear canvas for the new floor
     loadIntoStore([], []);
+    pushFloorsToGlobal(next);
   };
 
   const openFloor = (floorId: string) => {
@@ -107,28 +105,24 @@ export default function FloorManager({ visible, onClose }: Props) {
   };
 
   const commitRename = (floorId: string) => {
-    const trimmed = renameText.trim();
-    if (!trimmed) {
-      setRenamingId(null);
-      setRenameText('');
-      return;
-    }
-    setFloors((list) => list.map((f) => (f.id === floorId ? { ...f, name: trimmed } : f)));
+    const name = renameText.trim();
     setRenamingId(null);
     setRenameText('');
+    if (!name) return;
+    const next = floors.map((f) => (f.id === floorId ? { ...f, name } : f));
+    setFloors(next);
+    pushFloorsToGlobal(next);
   };
 
   const deleteFloor = (floor: Floor) => {
     if (floors.length <= 1) {
-      // last floor: keep one floor and just clear it
-      setFloorData((m) => ({
-        ...m,
-        [floor.id]: { nodes: [], cables: [] },
-      }));
+      // last floor: just clear it
+      setFloorData((m) => ({ ...m, [floor.id]: { nodes: [], cables: [] } }));
       if (activeFloorId === floor.id) loadIntoStore([], []);
+      const next = floors.map((f, i) => ({ ...f, orderIndex: i })); // keep 1
+      pushFloorsToGlobal(next);
       return;
     }
-
     const next = floors.filter((f) => f.id !== floor.id).map((f, i) => ({ ...f, orderIndex: i }));
     setFloors(next);
 
@@ -143,6 +137,7 @@ export default function FloorManager({ visible, onClose }: Props) {
       loadIntoStore(data.nodes, data.cables);
       setActiveFloorId(pick ? pick.id : null);
     }
+    pushFloorsToGlobal(next);
   };
 
   const reorder = (from: number, to: number) => {
@@ -150,27 +145,19 @@ export default function FloorManager({ visible, onClose }: Props) {
     const arr = floors.slice();
     const [moved] = arr.splice(from, 1);
     arr.splice(to, 0, moved);
-    setFloors(arr.map((f, i) => ({ ...f, orderIndex: i })));
+    const next = arr.map((f, i) => ({ ...f, orderIndex: i }));
+    setFloors(next);
+    pushFloorsToGlobal(next);
   };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-        <View
-          style={{
-            backgroundColor: '#151515',
-            padding: 16,
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16,
-            maxHeight: '85%',
-          }}
-        >
+        <View style={{ backgroundColor: '#151515', padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '85%' }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' as const }}>Floors</Text>
-            <Pressable onPress={onClose}>
-              <Text style={{ color: '#A78BFA', fontWeight: '600' as const }}>Close</Text>
-            </Pressable>
+            <Pressable onPress={onClose}><Text style={{ color: '#A78BFA', fontWeight: '600' as const }}>Close</Text></Pressable>
           </View>
 
           {/* Add */}
@@ -189,63 +176,44 @@ export default function FloorManager({ visible, onClose }: Props) {
               const isRenaming = renamingId === item.id;
 
               return (
-                <View
-                  style={{
-                    backgroundColor: isActive ? '#272343' : '#1F1F1F',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
-                  }}
-                >
+                <View style={{ backgroundColor: isActive ? '#272343' : '#1F1F1F', borderRadius: 10, padding: 12, marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    {/* Name or rename input */}
+                    {/* Title / rename */}
                     {isRenaming ? (
-                      <View style={{ flex: 1, marginRight: 12 }}>
-                        <TextInput
-                          value={renameText}
-                          onChangeText={setRenameText}
-                          autoFocus
-                          placeholder="Floor name"
-                          placeholderTextColor="#888"
-                          onSubmitEditing={() => commitRename(item.id)}
-                          onBlur={() => commitRename(item.id)}
-                          style={{
-                            backgroundColor: '#111',
-                            color: '#fff',
-                            paddingHorizontal: 10,
-                            paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-                            borderRadius: 8,
-                          }}
-                        />
-                      </View>
+                      <TextInput
+                        value={renameText}
+                        onChangeText={setRenameText}
+                        autoFocus
+                        placeholder="Floor name"
+                        placeholderTextColor="#888"
+                        onSubmitEditing={() => commitRename(item.id)}
+                        onBlur={() => commitRename(item.id)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: '#111',
+                          color: '#fff',
+                          paddingHorizontal: 10,
+                          paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+                          borderRadius: 8,
+                          marginRight: 12,
+                        }}
+                      />
                     ) : (
                       <Text style={{ color: 'white', fontWeight: '600' as const }}>{item.name}</Text>
                     )}
 
                     {/* Actions */}
                     <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <Pressable onPress={() => openFloor(item.id)}>
-                        <Text style={{ color: '#A78BFA' }}>Open</Text>
-                      </Pressable>
-                      {!isRenaming && (
-                        <Pressable onPress={() => beginRename(item)}>
-                          <Text style={{ color: '#A78BFA' }}>Rename</Text>
-                        </Pressable>
-                      )}
-                      <Pressable onPress={() => deleteFloor(item)}>
-                        <Text style={{ color: '#F87171' }}>Delete</Text>
-                      </Pressable>
+                      <Pressable onPress={() => openFloor(item.id)}><Text style={{ color: '#A78BFA' }}>Open</Text></Pressable>
+                      {!isRenaming && <Pressable onPress={() => beginRename(item)}><Text style={{ color: '#A78BFA' }}>Rename</Text></Pressable>}
+                      <Pressable onPress={() => deleteFloor(item)}><Text style={{ color: '#F87171' }}>Delete</Text></Pressable>
                     </View>
                   </View>
 
-                  {/* Reorder controls */}
+                  {/* Reorder */}
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                    <Pressable onPress={() => reorder(index, index - 1)} style={btn()}>
-                      <Text style={btnTxt()}>↑</Text>
-                    </Pressable>
-                    <Pressable onPress={() => reorder(index, index + 1)} style={btn()}>
-                      <Text style={btnTxt()}>↓</Text>
-                    </Pressable>
+                    <Pressable onPress={() => reorder(index, index - 1)} style={btn()}><Text style={btnTxt()}>↑</Text></Pressable>
+                    <Pressable onPress={() => reorder(index, index + 1)} style={btn()}><Text style={btnTxt()}>↓</Text></Pressable>
                   </View>
                 </View>
               );

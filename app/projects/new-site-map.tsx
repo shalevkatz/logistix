@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import FloorManager from '../../components/FloorManager';
 import SitePlanner from '../../components/SitePlanner';
 import { supabase } from '../../lib/supabase';
 import { uploadSiteMapAndGetPath } from '../../lib/uploadSiteMap';
@@ -28,17 +29,35 @@ export default function NewSiteMap() {
   const clearAll = useSiteMapStore((s) => s.clearAll);
   const [safeUri, setSafeUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fmOpen, setFmOpen] = useState(false);
 
+  // Version-safe image picker (works with older expo-image-picker too)
   const pickImage = async () => {
     try {
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo library access to pick an image.');
+        return;
+      }
+
+      const res: any = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: (ImagePicker as any).MediaTypeOptions?.Images ?? 'Images',
         quality: 1,
       });
-      if (res.canceled) return;
 
-      const originalUri = res.assets[0].uri;
-      const processedUri = await ensureSafePhoto(originalUri);
+      const wasCanceled: boolean =
+        typeof res?.canceled === 'boolean' ? res.canceled : !!res?.cancelled;
+      if (wasCanceled) return;
+
+      const uri: string | undefined =
+        res?.assets?.[0]?.uri ?? (typeof res?.uri === 'string' ? res.uri : undefined);
+
+      if (!uri) {
+        Alert.alert('Image Error', 'No image selected. Please try again.');
+        return;
+      }
+
+      const processedUri = await ensureSafePhoto(uri);
       if (!processedUri) {
         Alert.alert('Image Error', 'Could not process image. Please choose a different photo.');
         return;
@@ -46,7 +65,7 @@ export default function NewSiteMap() {
       setSafeUri(processedUri);
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Image Error', e?.message ?? 'Failed to load image.');
+      Alert.alert('Image Error', e?.message ?? 'Failed to pick image.');
     }
   };
 
@@ -102,13 +121,16 @@ export default function NewSiteMap() {
 
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: '#0b1020' }}>
-      <Text style={{ color: 'white', fontSize: 22, fontWeight: '800', marginBottom: 6 }}>Add Site Map</Text>
+      <Text style={{ color: 'white', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Add Site Map</Text>
       <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>
         Step 2 of 2 — Add a site map (we optimize large photos automatically).
       </Text>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-        <Pressable onPress={pickImage} style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}>
+        <Pressable
+          onPress={pickImage}
+          style={{ backgroundColor: '#1f2937', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}
+        >
           <Text style={{ color: 'white' }}>{safeUri ? 'Change Image' : 'Upload Image'}</Text>
         </Pressable>
 
@@ -125,10 +147,27 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
+      {/* Planner area (unchanged): one canvas + one palette */}
       <View style={{ flex: 1 }}>
         <SitePlanner imageUrl={safeUri} />
       </View>
 
+      {/* Manage Floors button — bottom CENTER (opens local modal) */}
+      <View style={{ marginTop: 10, alignItems: 'center' }}>
+        <Pressable
+          onPress={() => setFmOpen(true)}
+          style={{
+            backgroundColor: '#374151',
+            paddingVertical: 10,
+            paddingHorizontal: 18,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 700 }}>Manage Floors</Text>
+        </Pressable>
+      </View>
+
+      {/* Bottom actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 12 }}>
         <Pressable onPress={() => router.back()} style={{ flex: 1, backgroundColor: '#1f2937', padding: 16, borderRadius: 14, alignItems: 'center' }}>
           <Text style={{ color: 'white' }}>Back</Text>
@@ -138,9 +177,12 @@ export default function NewSiteMap() {
           disabled={busy}
           style={{ flex: 1, backgroundColor: '#7c3aed', padding: 16, borderRadius: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}
         >
-          {busy ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: '700' }}>Save & Create Project</Text>}
+          {busy ? <ActivityIndicator /> : <Text style={{ color: 'white', fontWeight: 700 }}>Save & Create Project</Text>}
         </Pressable>
       </View>
+
+      {/* Local “layers” modal */}
+      <FloorManager visible={fmOpen} onClose={() => setFmOpen(false)} />
     </View>
   );
 }

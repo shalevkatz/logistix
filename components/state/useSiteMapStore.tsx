@@ -16,7 +16,6 @@ export type CablePoint = { x: number; y: number };
 export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean };
 
 export type Mode = 'select' | 'place-device' | 'draw-cable';
-
 type Viewport = { scale: number; translateX: number; translateY: number };
 
 type Snapshot = {
@@ -50,6 +49,14 @@ type SiteMapState = {
   deviceToPlace: DeviceType | null;
   viewport: Viewport;
 
+  // per-floor backgrounds
+  activeFloorId?: string;
+  floorImages: Record<string, string | null>;
+  currentBackgroundUrl: string | null;
+
+  setActiveFloorId: (id: string) => void;
+  setFloorImage: (floorId: string, uri: string | null) => void;
+
   // history
   historyPast: Snapshot[];
   historyFuture: Snapshot[];
@@ -81,7 +88,6 @@ type SiteMapState = {
 };
 
 const COLOR_PALETTE = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#06b6d4', '#e11d48'];
-
 const nextCableColor = (prev?: string) => {
   if (!prev) return COLOR_PALETTE[0];
   const idx = COLOR_PALETTE.indexOf(prev);
@@ -97,11 +103,31 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
 
+  // per-floor backgrounds (new)
+  activeFloorId: undefined,
+  floorImages: {},
+  currentBackgroundUrl: null,
+
+  // history
   historyPast: [],
   historyFuture: [],
   canUndo: false,
   canRedo: false,
 
+  // per-floor helpers (new)
+  setActiveFloorId: (id) =>
+    set((s) => ({
+      activeFloorId: id,
+      currentBackgroundUrl: s.floorImages[id] ?? null,
+    })),
+
+  setFloorImage: (floorId, uri) =>
+    set((s) => ({
+      floorImages: { ...s.floorImages, [floorId]: uri ?? null },
+      currentBackgroundUrl: s.activeFloorId === floorId ? (uri ?? null) : s.currentBackgroundUrl,
+    })),
+
+  // basic controls
   setMode: (m) => set({ mode: m }),
   setDeviceToPlace: (t) => set({ deviceToPlace: t }),
 
@@ -118,7 +144,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   select: (id) => set({ selectedId: id }),
   selectCable: (id) => set({ selectedCableId: id }),
 
-  // --- mutations with history ---------------------------------
+  // mutations with history
   clearAll: () =>
     set((s) => {
       const past = [...s.historyPast, takeSnapshot(s)];
@@ -202,7 +228,6 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
       const last = s.cables[s.cables.length - 1];
       if (last.finished) return { mode: 'select' } as Partial<SiteMapState>;
       const past = [...s.historyPast, takeSnapshot(s)];
-
       const keep = last.points.length >= 2;
       const updatedLast = { ...last, finished: true };
       return {
@@ -234,7 +259,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
       };
     }),
 
-  // --- edit tools ---------------------------------------------
+  // edit tools
   undo: () =>
     set((s) => {
       if (!s.historyPast.length) return s;
@@ -299,3 +324,5 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
       };
     }),
 }));
+
+export type { SiteMapState };

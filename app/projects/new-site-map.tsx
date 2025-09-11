@@ -60,7 +60,16 @@ export default function NewSiteMap() {
         Alert.alert('Image Error', 'Could not process image. Please choose a different photo.');
         return;
       }
+
       setSafeUri(processedUri);
+
+      // Save to active floor if exists. If not, set current background so the user still sees it.
+      const { activeFloorId, setFloorImage } = useSiteMapStore.getState() as any;
+      if (activeFloorId) {
+        setFloorImage(activeFloorId, processedUri);
+      } else {
+        useSiteMapStore.setState({ currentBackgroundUrl: processedUri });
+      }
     } catch (e: any) {
       console.error(e);
       Alert.alert('Image Error', e?.message ?? 'Failed to pick image.');
@@ -74,7 +83,6 @@ export default function NewSiteMap() {
       const user = auth.user;
       if (!user) throw new Error('Not signed in');
 
-      // 1) Create project
       const { data: proj, error: projErr } = await supabase
         .from('projects')
         .insert({
@@ -95,7 +103,6 @@ export default function NewSiteMap() {
 
       const projectId = proj.id as string;
 
-      // 2) Optional: upload selected image and create a site_maps row
       let imagePath: string | null = null;
       if (safeUri) {
         imagePath = await uploadSiteMapAndGetPath(safeUri, user.id);
@@ -105,11 +112,11 @@ export default function NewSiteMap() {
         project_id: projectId,
         owner_id: user.id,
         image_path: imagePath,
-        markers: [], // keep your existing structure
+        markers: [],
       });
       if (smErr) throw smErr;
 
-      // 3) Persist floors (from FloorManager) into `floors` table
+      // Floors from FloorManager (optional)
       const localFloors =
         ((useSiteMapStore.getState() as any)._localFloors as Array<{
           name: string;
@@ -121,7 +128,6 @@ export default function NewSiteMap() {
         name: f?.name ?? `Floor ${i + 1}`,
         order_index: Number.isFinite(f?.orderIndex) ? f.orderIndex : i,
       }));
-
       const { error: flErr } = await supabase.from('floors').insert(rows);
       if (flErr) throw flErr;
 
@@ -137,7 +143,7 @@ export default function NewSiteMap() {
 
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: '#0b1020' }}>
-      <Text style={{ color: 'white', fontSize: 22, fontWeight: '800' as const, marginBottom: 6 }}>
+      <Text style={{ color: 'white', fontSize: 22, fontWeight: 800 as const, marginBottom: 6 }}>
         Add Site Map
       </Text>
       <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>
@@ -175,12 +181,10 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
-      {/* Planner area (unchanged): one canvas + one palette */}
       <View style={{ flex: 1 }}>
         <SitePlanner imageUrl={safeUri} />
       </View>
 
-      {/* Manage Floors button — bottom CENTER (opens simple local modal) */}
       <View style={{ marginTop: 10, alignItems: 'center' }}>
         <Pressable
           onPress={() => setFmOpen(true)}
@@ -191,11 +195,10 @@ export default function NewSiteMap() {
             borderRadius: 999,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' as const }}>Manage Floors</Text>
+          <Text style={{ color: 'white', fontWeight: 700 as const }}>Manage Floors</Text>
         </Pressable>
       </View>
 
-      {/* Bottom actions */}
       <View
         style={{
           flexDirection: 'row',
@@ -231,14 +234,14 @@ export default function NewSiteMap() {
           {busy ? (
             <ActivityIndicator />
           ) : (
-            <Text style={{ color: 'white', fontWeight: '700' as const }}>
+            <Text style={{ color: 'white', fontWeight: 700 as const }}>
               Save & Create Project
             </Text>
           )}
         </Pressable>
       </View>
 
-      {/* Simple Floors modal (local only; saved on submit) */}
+      {/* You can pass seedBackground={safeUri} if you want Floor 1 auto-seeded on first open */}
       <FloorManager visible={fmOpen} onClose={() => setFmOpen(false)} />
     </View>
   );

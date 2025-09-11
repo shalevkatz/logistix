@@ -31,6 +31,7 @@ export default function NewSiteMap() {
   const [busy, setBusy] = useState(false);
   const [fmOpen, setFmOpen] = useState(false);
 
+  // Pick & attach image (page-level and, if a floor is active, to that floor)
   const pickImage = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -63,7 +64,7 @@ export default function NewSiteMap() {
 
       setSafeUri(processedUri);
 
-      // Save to active floor if exists. If not, set current background so the user still sees it.
+      // Save to the active floor if present; otherwise show it as the page image
       const { activeFloorId, setFloorImage } = useSiteMapStore.getState() as any;
       if (activeFloorId) {
         setFloorImage(activeFloorId, processedUri);
@@ -83,6 +84,7 @@ export default function NewSiteMap() {
       const user = auth.user;
       if (!user) throw new Error('Not signed in');
 
+      // 1) Create project
       const { data: proj, error: projErr } = await supabase
         .from('projects')
         .insert({
@@ -103,11 +105,11 @@ export default function NewSiteMap() {
 
       const projectId = proj.id as string;
 
+      // 2) Optional: upload the page-level image and create a site_maps row (kept as your "overview")
       let imagePath: string | null = null;
       if (safeUri) {
         imagePath = await uploadSiteMapAndGetPath(safeUri, user.id);
       }
-
       const { error: smErr } = await supabase.from('site_maps').insert({
         project_id: projectId,
         owner_id: user.id,
@@ -116,19 +118,36 @@ export default function NewSiteMap() {
       });
       if (smErr) throw smErr;
 
-      // Floors from FloorManager (optional)
+      // 3) Persist floors (names, order, and per-floor image_path)
+      const state = useSiteMapStore.getState() as any;
       const localFloors =
-        ((useSiteMapStore.getState() as any)._localFloors as Array<{
-          name: string;
-          orderIndex: number;
-        }> | undefined) ?? [{ name: 'Floor 1', orderIndex: 0 }];
+        (state._localFloors as Array<{ id?: string; name: string; orderIndex: number }>) ??
+        [{ name: 'Floor 1', orderIndex: 0 }];
+      const floorImages: Record<string, string | null> = state.floorImages ?? {};
 
-      const rows = localFloors.map((f, i) => ({
-        project_id: projectId,
-        name: f?.name ?? `Floor ${i + 1}`,
-        order_index: Number.isFinite(f?.orderIndex) ? f.orderIndex : i,
-      }));
-      const { error: flErr } = await supabase.from('floors').insert(rows);
+      // Upload each floor image (if any), then insert floors with image_path
+      const floorRows = [] as Array<{ project_id: string; name: string; order_index: number; image_path: string | null }>;
+
+      for (let i = 0; i < localFloors.length; i++) {
+        const f = localFloors[i];
+        const fid = f.id ?? `local_${i}`;
+        const localUri = floorImages[fid] ?? null;
+
+        let floorImagePath: string | null = null;
+        if (localUri) {
+          // Reuse your helper; later we can switch to a project/floor-based storage key
+          floorImagePath = await uploadSiteMapAndGetPath(localUri, user.id);
+        }
+
+        floorRows.push({
+          project_id: projectId,
+          name: f?.name ?? `Floor ${i + 1}`,
+          order_index: Number.isFinite(f?.orderIndex) ? f.orderIndex : i,
+          image_path: floorImagePath,
+        });
+      }
+
+      const { error: flErr } = await supabase.from('floors').insert(floorRows);
       if (flErr) throw flErr;
 
       Alert.alert('Success', 'Project created.');
@@ -181,10 +200,12 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
+      {/* Planner area */}
       <View style={{ flex: 1 }}>
         <SitePlanner imageUrl={safeUri} />
       </View>
 
+      {/* Manage Floors button — bottom CENTER (opens modal) */}
       <View style={{ marginTop: 10, alignItems: 'center' }}>
         <Pressable
           onPress={() => setFmOpen(true)}
@@ -199,6 +220,7 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
+      {/* Bottom actions */}
       <View
         style={{
           flexDirection: 'row',
@@ -241,7 +263,6 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
-      {/* You can pass seedBackground={safeUri} if you want Floor 1 auto-seeded on first open */}
       <FloorManager visible={fmOpen} onClose={() => setFmOpen(false)} />
     </View>
   );

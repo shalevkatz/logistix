@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
-// IMPORTANT: use the SAME import path for the store everywhere in the app
+// Use the SAME path everywhere for the store:
 import { useSiteMapStore } from '@/components/state/useSiteMapStore';
 
 type Floor = { id: string; name: string; orderIndex: number };
@@ -9,16 +9,22 @@ type Floor = { id: string; name: string; orderIndex: number };
 const deepClone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 const makeId = () => `floor_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
-type Props = { visible: boolean; onClose: () => void };
+type Props = {
+  visible: boolean;
+  onClose: () => void;
+  /** If user picked an image before opening the manager, seed Floor 1 with it */
+  seedBackground?: string | null;
+};
 
 /**
  * Local-only Floor Manager
  * - Keeps an internal "floors" list and activeFloorId
  * - Captures current store nodes/cables into a per-floor map
  * - On switch: writes floor data back into the store (nodes/cables)
- * - Also syncs floors list to the global store as _localFloors for Save
+ * - Syncs floors list to the global store as _localFloors (used by Save)
+ * - NEW: seeds Floor 1 image into per-floor map so it doesn’t disappear when adding Floor 2
  */
-export default function FloorManager({ visible, onClose }: Props) {
+export default function FloorManager({ visible, onClose, seedBackground = null }: Props) {
   // local floors state (independent of store)
   const [floors, setFloors] = useState<Floor[]>([]);
   const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
@@ -61,8 +67,13 @@ export default function FloorManager({ visible, onClose }: Props) {
   };
 
   // ensure at least one floor when modal opens; attach current canvas to Floor 1
+  // and seed its image into the per-floor map so it persists after adding more floors
   useEffect(() => {
     if (!visible) return;
+
+    const { setActiveFloorId: setGlobalFloor, setFloorImage } = useSiteMapStore.getState() as any;
+    const currentPageBg = (useSiteMapStore.getState() as any).currentBackgroundUrl as string | null | undefined;
+    const seed = seedBackground ?? currentPageBg ?? null;
 
     if (floors.length === 0) {
       const first: Floor = { id: makeId(), name: 'Floor 1', orderIndex: 0 };
@@ -74,10 +85,14 @@ export default function FloorManager({ visible, onClose }: Props) {
       });
       pushFloorsToGlobal(initial);
 
-      // also tell the global store which floor is active (for per-floor image wiring)
-      const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
+      // ✅ Seed Floor 1 image if we have one (prevents “both floors blank” issue)
+      if (seed) {
+        setFloorImage(first.id, seed);
+      }
+
+      // now tell global store which floor is active (this will set currentBackgroundUrl from floorImages)
       setGlobalFloor(first.id);
-      console.log('[FM] init -> activeFloorId =', first.id);
+      // console.log('[FM] init -> activeFloorId =', first.id, 'seed =', seed ?? '(none)');
     } else if (activeFloorId && !floorData[activeFloorId]) {
       captureCurrentInto(activeFloorId);
     }
@@ -93,17 +108,17 @@ export default function FloorManager({ visible, onClose }: Props) {
     setFloors(next);
     pushFloorsToGlobal(next);
 
-    // start brand-new floor EMPTY (no image, no nodes/cables)
+    // start brand-new floor EMPTY (no nodes/cables; image will be set when user uploads)
     setFloorData((m) => ({ ...m, [f.id]: { nodes: [], cables: [] } }));
     setActiveFloorId(f.id);
 
     // clear canvas for the new floor
     loadIntoStore([], []);
 
-    // tell the global store which floor is active (so "Upload Image" applies to this floor)
+    // tell the global store which floor is active (so uploads apply to THIS floor)
     const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
     setGlobalFloor(f.id);
-    console.log('[FM] addFloor -> activeFloorId =', f.id);
+    // console.log('[FM] addFloor -> activeFloorId =', f.id);
   };
 
   const openFloor = (floorId: string) => {
@@ -114,10 +129,9 @@ export default function FloorManager({ visible, onClose }: Props) {
     loadIntoStore(data.nodes, data.cables);
     setActiveFloorId(floorId);
 
-    // tell the global store which floor is active
     const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
     setGlobalFloor(floorId);
-    console.log('[FM] openFloor -> activeFloorId =', floorId);
+    // console.log('[FM] openFloor -> activeFloorId =', floorId);
   };
 
   const beginRename = (floor: Floor) => {
@@ -137,7 +151,7 @@ export default function FloorManager({ visible, onClose }: Props) {
 
   const deleteFloor = (floor: Floor) => {
     if (floors.length <= 1) {
-      // last floor: keep it but clear
+      // last floor: keep but clear
       setFloorData((m) => ({ ...m, [floor.id]: { nodes: [], cables: [] } }));
       if (activeFloorId === floor.id) loadIntoStore([], []);
       return;
@@ -160,7 +174,7 @@ export default function FloorManager({ visible, onClose }: Props) {
 
       const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
       setGlobalFloor(pick ? pick.id : '');
-      console.log('[FM] deleteFloor -> activeFloorId =', pick ? pick.id : '(none)');
+      // console.log('[FM] deleteFloor -> activeFloorId =', pick ? pick.id : '(none)');
     }
   };
 

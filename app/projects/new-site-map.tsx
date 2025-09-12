@@ -263,7 +263,7 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
-      <FloorManager visible={fmOpen} onClose={() => setFmOpen(false)} />
+      <FloorManager visible={fmOpen} onClose={() => setFmOpen(false)} seedBackground={safeUri} />
     </View>
   );
 }

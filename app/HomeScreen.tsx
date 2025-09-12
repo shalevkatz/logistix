@@ -15,21 +15,21 @@ export default function HomeScreen() {
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [email, setEmail] = useState<string>('User');
   const [userMeta, setUserMeta] = useState<Record<string, any>>({});
-  const { profile, loading: profileLoading, error: profileError } = useProfile(userId);
+  const { profile, loading: profileLoading } = useProfile(userId);
 
-useEffect(() => {
-  let mounted = true;
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (!mounted) return;
-    setUserId(session?.user?.id);
-    setEmail(session?.user?.email ?? 'User');
-    setUserMeta(session?.user?.user_metadata ?? {});   // 👈 add this
-  });
-  return () => { mounted = false; };
-}, []);
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      setUserId(session?.user?.id);
+      setEmail(session?.user?.email ?? 'User');
+      setUserMeta(session?.user?.user_metadata ?? {});
+    });
+    return () => { mounted = false; };
+  }, []);
 
   const { projects, loading, error, refetch } = useProjects(userId);
-  
+
   useFocusEffect(
     React.useCallback(() => {
       refetch();
@@ -48,10 +48,10 @@ useEffect(() => {
     await supabase.auth.signOut();
   };
 
-  const goNew = () => router.push('/projects/new');
-  const openProject = (id: string) => {
-    router.push({ pathname: '/projects/[id]', params: { id } } as Href);
-  };
+  // ✅ Open the full project page (fetches details by id)
+const openProject = (id: string) => {
+  router.push({ pathname: '/projects/[id]', params: { id } } as Href);
+};
 
   if (loading || userId === undefined) {
     return (
@@ -74,8 +74,7 @@ useEffect(() => {
         </Pressable>
       </View>
 
-
-      {/* Error */}
+      {/* Error / Empty / List */}
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>Couldn’t load projects: {error}</Text>
@@ -85,19 +84,16 @@ useEffect(() => {
         </View>
       ) : projects.length === 0 ? (
         // Empty state
-<View style={styles.emptyWrap}>
-  <Text style={styles.emptyTitle}>Let’s start your first project</Text>
-  <Text style={styles.emptySubtitle}>
-    Create a project to track tasks, hours, and reports.
-  </Text>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>Let’s start your first project</Text>
+          <Text style={styles.emptySubtitle}>
+            Create a project to track tasks, hours, and reports.
+          </Text>
 
-<Pressable onPress={() => router.push('/create-project')} style={styles.bigAddCircle}>
-  <Text style={styles.bigAddText}>+</Text>
-</Pressable>
-</View>
-
-
-
+          <Pressable onPress={() => router.push('/create-project')} style={styles.bigAddCircle}>
+            <Text style={styles.bigAddText}>+</Text>
+          </Pressable>
+        </View>
       ) : (
         // Projects list
         <View style={{ flex: 1 }}>

@@ -1,22 +1,32 @@
-import { useSiteMapStore } from '@/components/state/useSiteMapStore';
+// components/SitePlanner.tsx
 import React from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { Dimensions, View } from 'react-native';
 import Canvas from './Canvas';
 import Palette from './Palette';
+import { useSiteMapStore } from './state/useSiteMapStore';
 
-type Props = { imageUrl?: string | null };
+type Props = {
+  // Used only in creation flow (no active floor yet)
+  imageUrl?: string | null;
+  imageUri?: string | null;
+};
 
-export default function SitePlanner({ imageUrl }: Props) {
-  const { width, height } = useWindowDimensions();
+export default function SitePlanner({ imageUrl, imageUri }: Props) {
+  const { width, height } = Dimensions.get('window');
 
-  const activeFloorId = useSiteMapStore((s: any) => s.activeFloorId) as string | undefined;
-  const currentBg = useSiteMapStore((s: any) => s.currentBackgroundUrl) as string | null | undefined;
+  // PURE selectors (avoid returning a new object every render)
+  const activeFloorId = useSiteMapStore((s: any) => s.activeFloorId as string | undefined);
+  const currentBackgroundUrl = useSiteMapStore(
+    (s: any) => s.currentBackgroundUrl as string | null
+  );
 
-  // If a floor is active -> use only the per-floor background.
-  // If no floor is active yet -> fall back to the page image.
-  const background = activeFloorId ? (currentBg ?? null) : (imageUrl ?? currentBg ?? null);
+  // If a floor is active (planner), ignore props completely.
+  // If no floor is active (creation), use whichever prop you passed.
+  const effectiveImageUri = activeFloorId
+    ? (currentBackgroundUrl ?? null)
+    : (imageUri ?? imageUrl ?? null);
 
-  const paletteWidth = background ? 120 : 0;
+  const paletteWidth = effectiveImageUri ? 120 : 0;
 
   return (
     <View
@@ -29,9 +39,13 @@ export default function SitePlanner({ imageUrl }: Props) {
       }}
     >
       <View style={{ flex: 1 }}>
-        <Canvas width={width - paletteWidth} height={height * 0.62} imageUri={background} />
+        <Canvas
+          width={width - paletteWidth}
+          height={height * 0.62}
+          imageUri={effectiveImageUri}
+        />
       </View>
-      {!!background && <Palette />}
+      {!!effectiveImageUri && <Palette />}
     </View>
   );
 }

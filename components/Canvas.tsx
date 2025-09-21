@@ -1,18 +1,16 @@
 // components/Canvas.tsx
 import { MaterialCommunityIcons as MIcon } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import Svg, { Image as SvgImage } from 'react-native-svg';
+import Svg from 'react-native-svg';
 
 import CablePath from './Cable';
 import CableAnchors from './CableAnchors';
 import DeviceIcon from './DeviceIcon';
-
-// Use the SAME store path everywhere
-import type { Cable as CableModel } from '@/components/state/useSiteMapStore';
-import { useSiteMapStore } from '@/components/state/useSiteMapStore';
+import type { Cable as CableModel } from './state/useSiteMapStore';
+import { useSiteMapStore } from './state/useSiteMapStore';
 
 // ---------- helpers (pure JS) ----------
 function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
@@ -29,8 +27,6 @@ function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: numb
 type Props = { width: number; height: number; imageUri: string | null };
 
 export default function Canvas({ width, height, imageUri }: Props) {
-  console.log('[Canvas] imageUri =', imageUri);
-
   const {
     nodes,
     cables,
@@ -49,6 +45,7 @@ export default function Canvas({ width, height, imageUri }: Props) {
   const deviceToPlace = useSiteMapStore((s) => s.deviceToPlace);
   const startCable = useSiteMapStore((s) => s.startCable);
 
+  // --- pan/zoom shared values (keep hooks unconditional)
   const scale = useSharedValue(viewport.scale);
   const tx = useSharedValue(viewport.translateX);
   const ty = useSharedValue(viewport.translateY);
@@ -87,6 +84,7 @@ export default function Canvas({ width, height, imageUri }: Props) {
       runOnJS(commitViewport)(scale.value, tx.value, ty.value);
     });
 
+  // JS-side selector (safe to call via runOnJS from worklets)
   const selectNearestCableJS = useCallback(
     (x: number, y: number) => {
       let best: { c: CableModel; d: number } | null = null;
@@ -128,6 +126,7 @@ export default function Canvas({ width, height, imageUri }: Props) {
       return;
     }
 
+    // selection mode — do the search on JS thread
     runOnJS(selectNearestCableJS)(x, y);
   });
 
@@ -142,6 +141,7 @@ export default function Canvas({ width, height, imageUri }: Props) {
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
   }));
 
+  // which cable shows anchors
   const activeCable =
     mode === 'draw-cable' &&
     cables.length > 0 &&
@@ -160,22 +160,22 @@ export default function Canvas({ width, height, imageUri }: Props) {
     <GestureDetector gesture={composed}>
       <View style={{ width, height, backgroundColor: '#0b1020', overflow: 'hidden' }}>
         {imageUri ? (
-          <Animated.View key={imageUri ?? 'no-image'} style={[{ width, height }, aStyle]}>
-            <Svg key={imageUri ?? 'no-image'} width={width} height={height}>
-              <SvgImage
-                key={imageUri ?? 'no-image'}
-                href={{ uri: imageUri as string }}
-                x={0}
-                y={0}
-                width={width}
-                height={height}
-                preserveAspectRatio="xMidYMid meet"
-              />
+          <Animated.View style={[{ width, height }, aStyle]}>
+            {/* Background as native Image (more robust with remote URLs) */}
+            <Image
+              source={{ uri: imageUri }}
+              style={{ position: 'absolute', left: 0, top: 0, width, height }}
+              resizeMode="contain"
+            />
+
+            {/* Cables layer */}
+            <Svg width={width} height={height} style={{ position: 'absolute', left: 0, top: 0 }}>
               {cables.map((c) => (
                 <CablePath key={c.id} id={c.id} points={c.points} color={c.color} />
               ))}
             </Svg>
 
+            {/* Devices & anchors layer */}
             <View style={{ position: 'absolute', inset: 0 }} pointerEvents="box-none">
               {anchorsFor && (
                 <CableAnchors
@@ -198,6 +198,7 @@ export default function Canvas({ width, height, imageUri }: Props) {
             </View>
           </Animated.View>
         ) : (
+          // Placeholder (non-gesture, non-worklet)
           <View
             style={{
               flex: 1,

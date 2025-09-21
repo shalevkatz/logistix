@@ -18,7 +18,7 @@ export async function uploadSiteMapAndGetPath(localUri: string, userId: string) 
   const path = `${userId}/${siteMapId}.jpg`;
 
   const { error: upErr } = await supabase.storage
-    .from('sitemaps')
+    .from('site-maps')
     .upload(path, decode(manipulated.base64), { contentType: 'image/jpeg', upsert: false });
 
   if (upErr) throw upErr;

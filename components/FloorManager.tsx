@@ -1,7 +1,7 @@
+// components/FloorManager.tsx
 import React, { useEffect, useState } from 'react';
 import { FlatList, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
-// Use the SAME path everywhere for the store:
-import { useSiteMapStore } from '@/components/state/useSiteMapStore';
+import { useSiteMapStore } from './state/useSiteMapStore';
 
 type Floor = { id: string; name: string; orderIndex: number };
 
@@ -9,129 +9,148 @@ type Floor = { id: string; name: string; orderIndex: number };
 const deepClone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 const makeId = () => `floor_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
+
+
 type Props = {
   visible: boolean;
   onClose: () => void;
-  /** If user picked an image before opening the manager, seed Floor 1 with it */
+  /** Optional: seed Floor 1 background with the page’s selected image */
   seedBackground?: string | null;
 };
 
 /**
  * Local-only Floor Manager
- * - Keeps an internal "floors" list and activeFloorId
- * - Captures current store nodes/cables into a per-floor map
- * - On switch: writes floor data back into the store (nodes/cables)
- * - Syncs floors list to the global store as _localFloors (used by Save)
- * - NEW: seeds Floor 1 image into per-floor map so it doesn’t disappear when adding Floor 2
+ * - keeps an internal "floors" list + activeFloorId
+ * - captures current store nodes/cables into per-floor map
+ * - on switch: writes floor data back into the store (nodes/cables)
+ * - sets per-floor background via store (no image picker here)
  */
 export default function FloorManager({ visible, onClose, seedBackground = null }: Props) {
+  // ✅ move hooks INSIDE the component
+  const setLocalFloors      = useSiteMapStore((s) => s.setLocalFloors);
+  const setFloorName        = useSiteMapStore((s) => s.setFloorName);
+  const setAllFloorCanvases = useSiteMapStore((s) => s.setAllFloorCanvases);
+
   // local floors state (independent of store)
   const [floors, setFloors] = useState<Floor[]>([]);
-  const [activeFloorId, setActiveFloorId] = useState<string | null>(null);
+  const [activeFloorId, setActiveFloorIdLocal] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState<string>('');
 
   // per-floor canvas data (nodes/cables) stored locally
   const [floorData, setFloorData] = useState<Record<string, { nodes: any[]; cables: any[] }>>({});
 
-  // access the global canvas state
+  // store read/writes
   const nodes = useSiteMapStore((s) => s.nodes);
   const cables = useSiteMapStore((s) => s.cables);
+  const storeSetActiveFloorId = (useSiteMapStore.getState() as any).setActiveFloorId as (id: string) => void;
+  const storeSetFloorImage   = (useSiteMapStore.getState() as any).setFloorImage as (id: string, uri: string | null) => void;
 
-  // write canvas data back to the store
+  // ✅ use the real store action; keep id/name/orderIndex intact
+  const pushFloorsToGlobal = (list: Floor[]) => {
+    setLocalFloors(list);
+  };
+
   const loadIntoStore = (n: any[], c: any[]) => {
     useSiteMapStore.setState({
       nodes: deepClone(n),
       cables: deepClone(c),
-      selectedId: undefined,
-      selectedCableId: undefined,
+      selectedId: null,
+      selectedCableId: null,
+      mode: 'select',
     });
   };
 
-  // keep floors list in the global store so Save can persist
-  const pushFloorsToGlobal = (list: Floor[]) => {
-    (useSiteMapStore as any).setState?.({
-      _localFloors: list.map(({ id, name, orderIndex }) => ({ id, name, orderIndex })),
-    });
-  };
-
-  // save current store nodes/cables into the current floor slot
   const captureCurrentInto = (floorId: string) => {
     setFloorData((prev) => ({
       ...prev,
-      [floorId]: {
-        nodes: deepClone(nodes),
-        cables: deepClone(cables),
-      },
+      [floorId]: { nodes: deepClone(nodes), cables: deepClone(cables) },
     }));
   };
 
-  // ensure at least one floor when modal opens; attach current canvas to Floor 1
-  // and seed its image into the per-floor map so it persists after adding more floors
+  // ensure a first floor when modal opens; seed background if provided
   useEffect(() => {
     if (!visible) return;
 
-    const { setActiveFloorId: setGlobalFloor, setFloorImage } = useSiteMapStore.getState() as any;
-    const currentPageBg = (useSiteMapStore.getState() as any).currentBackgroundUrl as string | null | undefined;
-    const seed = seedBackground ?? currentPageBg ?? null;
-
     if (floors.length === 0) {
       const first: Floor = { id: makeId(), name: 'Floor 1', orderIndex: 0 };
-      const initial = [first];
-      setFloors(initial);
-      setActiveFloorId(first.id);
+      setFloors([first]);
+      setActiveFloorIdLocal(first.id);
+
+      // Make this the active floor in the store and seed image (or leave blank)
+      storeSetActiveFloorId(first.id);
+      storeSetFloorImage(first.id, seedBackground ?? null);
+
+      // attach current canvas as Floor 1
       setFloorData({
         [first.id]: { nodes: deepClone(nodes), cables: deepClone(cables) },
       });
-      pushFloorsToGlobal(initial);
 
-      // ✅ Seed Floor 1 image if we have one (prevents “both floors blank” issue)
-      if (seed) {
-        setFloorImage(first.id, seed);
-      }
-
-      // now tell global store which floor is active (this will set currentBackgroundUrl from floorImages)
-      setGlobalFloor(first.id);
-      // console.log('[FM] init -> activeFloorId =', first.id, 'seed =', seed ?? '(none)');
+      pushFloorsToGlobal([first]);
     } else if (activeFloorId && !floorData[activeFloorId]) {
+      // if missing slot for some reason, attach it
       captureCurrentInto(activeFloorId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  // ---------- actions ----------
   const addFloor = () => {
     const f: Floor = { id: makeId(), name: `Floor ${floors.length + 1}`, orderIndex: floors.length };
-    // before switching away, capture current into the active
+
+    // capture current floor before switching away
     if (activeFloorId) captureCurrentInto(activeFloorId);
 
     const next = floors.concat(f);
     setFloors(next);
     pushFloorsToGlobal(next);
 
-    // start brand-new floor EMPTY (no nodes/cables; image will be set when user uploads)
+    // new floor starts BLANK (no background image, no nodes/cables)
     setFloorData((m) => ({ ...m, [f.id]: { nodes: [], cables: [] } }));
-    setActiveFloorId(f.id);
 
-    // clear canvas for the new floor
+
+
+    // switch to the new floor in store
+    setActiveFloorIdLocal(f.id);
+    storeSetActiveFloorId(f.id);
+    storeSetFloorImage(f.id, null); // <- important: no image bleed-over
     loadIntoStore([], []);
+  };
 
-    // tell the global store which floor is active (so uploads apply to THIS floor)
-    const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
-    setGlobalFloor(f.id);
-    // console.log('[FM] addFloor -> activeFloorId =', f.id);
+    // ✅ when closing, persist all floor canvases to the store
+  const handleClose = () => {
+    // capture the active floor before closing
+    let snapshot = floorData;
+    if (activeFloorId) {
+      snapshot = {
+        ...floorData,
+        [activeFloorId]: { nodes: deepClone(nodes), cables: deepClone(cables) },
+      };
+      setFloorData(snapshot);
+    }
+
+    // push to store so saveAll can read floorCanvases[localFloorId]
+    setAllFloorCanvases(
+      Object.fromEntries(
+        Object.entries(snapshot).map(([k, v]) => [
+          k,
+          { nodes: deepClone(v.nodes), cables: deepClone(v.cables) },
+        ])
+      )
+    );
+
+    onClose();
   };
 
   const openFloor = (floorId: string) => {
     if (floorId === activeFloorId) return;
+
     if (activeFloorId) captureCurrentInto(activeFloorId);
 
     const data = floorData[floorId] ?? { nodes: [], cables: [] };
+    setActiveFloorIdLocal(floorId);
+    storeSetActiveFloorId(floorId); // currentBackgroundUrl will be derived by the store
     loadIntoStore(data.nodes, data.cables);
-    setActiveFloorId(floorId);
-
-    const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
-    setGlobalFloor(floorId);
-    // console.log('[FM] openFloor -> activeFloorId =', floorId);
   };
 
   const beginRename = (floor: Floor) => {
@@ -140,18 +159,20 @@ export default function FloorManager({ visible, onClose, seedBackground = null }
   };
 
   const commitRename = (floorId: string) => {
-    const trimmed = renameText.trim();
-    setRenamingId(null);
-    setRenameText('');
-    if (!trimmed) return;
-    const next = floors.map((f) => (f.id === floorId ? { ...f, name: trimmed } : f));
-    setFloors(next);
-    pushFloorsToGlobal(next);
-  };
+  const trimmed = renameText.trim();
+  setRenamingId(null);
+  setRenameText('');
+  if (!trimmed) return;
+
+  const next = floors.map((f) => (f.id === floorId ? { ...f, name: trimmed } : f));
+  setFloors(next);
+  pushFloorsToGlobal(next);      // updates store.localFloors
+  setFloorName(floorId, trimmed); // explicitly update name by id (belt & suspenders)
+};
 
   const deleteFloor = (floor: Floor) => {
     if (floors.length <= 1) {
-      // last floor: keep but clear
+      // last floor: keep one and just clear it
       setFloorData((m) => ({ ...m, [floor.id]: { nodes: [], cables: [] } }));
       if (activeFloorId === floor.id) loadIntoStore([], []);
       return;
@@ -169,12 +190,9 @@ export default function FloorManager({ visible, onClose, seedBackground = null }
     if (activeFloorId === floor.id) {
       const pick = next[0];
       const data = pick ? floorData[pick.id] ?? { nodes: [], cables: [] } : { nodes: [], cables: [] };
+      setActiveFloorIdLocal(pick ? pick.id : null);
+      if (pick) storeSetActiveFloorId(pick.id);
       loadIntoStore(data.nodes, data.cables);
-      setActiveFloorId(pick ? pick.id : null);
-
-      const { setActiveFloorId: setGlobalFloor } = useSiteMapStore.getState() as any;
-      setGlobalFloor(pick ? pick.id : '');
-      // console.log('[FM] deleteFloor -> activeFloorId =', pick ? pick.id : '(none)');
     }
   };
 
@@ -189,7 +207,7 @@ export default function FloorManager({ visible, onClose, seedBackground = null }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose} transparent>
+    <Modal visible={visible} animationType="slide" onRequestClose={handleClose} transparent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
         <View
           style={{
@@ -203,7 +221,7 @@ export default function FloorManager({ visible, onClose, seedBackground = null }
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' as const }}>Floors</Text>
-            <Pressable onPress={onClose}>
+            <Pressable onPress={handleClose}>
               <Text style={{ color: '#A78BFA', fontWeight: '600' as const }}>Close</Text>
             </Pressable>
           </View>

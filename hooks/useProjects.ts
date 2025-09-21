@@ -15,8 +15,7 @@ export type Project = {
 type Row = {
   id: string;
   owner_id: string;
-  title?: string | null;                  // אולי קיים
-  name?: string | null;                   // לגרסאות ישנות
+  title?: string | null;                 
   description: string | null;
   priority: 'Low' | 'Medium' | 'High' | null;
   created_at: string;
@@ -42,7 +41,7 @@ export function useProjects(userId?: string) {
       const { data, error } = await supabase
         .from('projects')
         // נבקש גם title וגם name כדי לתמוך בשתי הסכמות
-        .select('id, owner_id, title, name, description, priority, created_at, updated_at')
+        .select('id, owner_id, title, description, priority, created_at, updated_at')
         .eq('owner_id', userId)
         .order('created_at', { ascending: false });
 
@@ -51,7 +50,7 @@ export function useProjects(userId?: string) {
       const mapped: Project[] = (data as Row[]).map((r) => ({
         id: r.id,
         owner_id: r.owner_id,
-        title: (r.title ?? r.name ?? null),
+        title: (r.title ?? null),
         description: r.description ?? null,
         priority: r.priority ?? null,
         created_at: r.created_at,

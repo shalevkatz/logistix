@@ -40,6 +40,15 @@ const takeSnapshot = (s: SiteMapState): Snapshot => ({
   deviceToPlace: s.deviceToPlace,
 });
 
+
+// New type for a local floor object
+export type LocalFloor = {
+  id: string;
+  name: string;
+  orderIndex: number;
+  imagePath?: string; // Add the imagePath property
+};
+
 type SiteMapState = {
   nodes: DeviceNode[];
   cables: Cable[];
@@ -53,9 +62,16 @@ type SiteMapState = {
   activeFloorId?: string;
   floorImages: Record<string, string | null>;
   currentBackgroundUrl: string | null;
+  localFloors: LocalFloor[]; // Add the localFloors array
 
   setActiveFloorId: (id: string) => void;
   setFloorImage: (floorId: string, uri: string | null) => void;
+  setLocalFloors: (floors: LocalFloor[]) => void; // Add a way to set floors
+  setFloorName: (id: string, name: string) => void;
+  
+
+  floorCanvases: Record<string, { nodes: DeviceNode[]; cables: Cable[] }>;
+  setAllFloorCanvases: (m: Record<string, { nodes: DeviceNode[]; cables: Cable[] }>) => void;
 
   // history
   historyPast: Snapshot[];
@@ -107,6 +123,11 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   activeFloorId: undefined,
   floorImages: {},
   currentBackgroundUrl: null,
+  localFloors: [], // Initialize the localFloors array
+
+
+  floorCanvases: {},
+  
 
   // history
   historyPast: [],
@@ -125,8 +146,21 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
     set((s) => ({
       floorImages: { ...s.floorImages, [floorId]: uri ?? null },
       currentBackgroundUrl: s.activeFloorId === floorId ? (uri ?? null) : s.currentBackgroundUrl,
+      // Update the imagePath in the localFloors array
+      localFloors: s.localFloors.map(f => f.id === floorId ? { ...f, imagePath: uri ?? undefined } : f),
     })),
 
+      setFloorName: (id, name) =>                     // <-- ADD THIS BLOCK
+    set((s) => ({
+      localFloors: (s.localFloors ?? []).map(f =>
+        f.id === id ? { ...f, name } : f
+      ),
+    })),
+    
+  setLocalFloors: (floors) => set({ localFloors: floors }),
+
+  setAllFloorCanvases: (m) => set({ floorCanvases: m }),
+  
   // basic controls
   setMode: (m) => set({ mode: m }),
   setDeviceToPlace: (t) => set({ deviceToPlace: t }),

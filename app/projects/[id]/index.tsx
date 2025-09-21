@@ -3,14 +3,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
   Text,
-  View,
+  View
 } from 'react-native';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../../lib/supabase';
 
 type Project = {
   id: string;
@@ -256,9 +255,8 @@ export default function ProjectDetails() {
         </Pressable>
 
         <Pressable
-          onPress={() =>
-            Alert.alert('Open Planner', 'Next step: hydrate floors + nodes/cables into the planner by project.')
-          }
+          onPress={() => router.push(`/projects/${project.id}/planner`)}
+
           style={{ flex: 1, backgroundColor: '#7c3aed', padding: 14, borderRadius: 12, alignItems: 'center' }}
         >
           <Text style={{ color: 'white', fontWeight: '700' as const }}>Open Planner</Text>

@@ -50,7 +50,7 @@ export default function HomeScreen() {
 
   // ✅ Open the full project page (fetches details by id)
 const openProject = (id: string) => {
-  router.push({ pathname: '/projects/[id]', params: { id } } as Href);
+  router.push({ pathname: '/projects/[id]/planner', params: { id } } as Href);
 };
 
   if (loading || userId === undefined) {

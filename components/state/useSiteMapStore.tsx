@@ -1,6 +1,8 @@
 import { nanoid } from 'nanoid/non-secure';
 import { create } from 'zustand';
 
+export type EditorMode = 'view' | 'edit';
+
 export type DeviceType = 'cctv' | 'nvr' | 'ap' | 'switch' | 'router';
 
 export type DeviceNode = {
@@ -15,13 +17,13 @@ export type DeviceNode = {
 export type CablePoint = { x: number; y: number };
 export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean };
 
-export type Mode = 'select' | 'place-device' | 'draw-cable';
+export type ToolMode = 'select' | 'place-device' | 'draw-cable';
 type Viewport = { scale: number; translateX: number; translateY: number };
 
 type Snapshot = {
   nodes: DeviceNode[];
   cables: Cable[];
-  mode: Mode;
+  toolMode: ToolMode;
   selectedId: string | null;
   selectedCableId: string | null;
   deviceToPlace: DeviceType | null;

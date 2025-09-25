@@ -9,7 +9,11 @@ type Props = {
   // Used only in creation flow (no active floor yet)
   imageUrl?: string | null;
   imageUri?: string | null;
+  floorId?: string;
+  projectId?: string;
 };
+
+
 
 export default function SitePlanner({ imageUrl, imageUri }: Props) {
   const { width, height } = Dimensions.get('window');

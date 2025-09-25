@@ -49,8 +49,20 @@ export default function HomeScreen() {
   };
 
   // ✅ Open the full project page (fetches details by id)
-const openProject = (id: string) => {
-  router.push({ pathname: '/projects/[id]/planner', params: { id } } as Href);
+const openProject = async (id: string) => {
+  const { data, error } = await supabase
+    .from('floors')
+    .select('id, image_path, created_at, order_index')
+    .eq('project_id', id)
+    .order('order_index', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  const first = data?.[0];
+  router.push({
+    pathname: '/projects/[id]/planner',
+    params: first ? { id, floorId: first.id } : { id }
+  } as Href);
 };
 
   if (loading || userId === undefined) {

@@ -1,62 +1,91 @@
 import SitePlanner from '@/components/SitePlanner';
+import { EditorMode } from '@/components/types';
 import { supabase } from '@/lib/supabase';
-import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
-type Floor = { id: string; image_path: string | null };
 
-export default function Planner() {
-  const { id, floorId } = useLocalSearchParams<{ id: string; floorId?: string }>();
-  const [floor, setFloor] = useState<Floor | null>(null);
-  const [loading, setLoading] = useState(true);
+function toPublicUrl(path: string | null): string | null {
+  if (!path) return null;
+  const { data } = supabase.storage.from('site-maps').getPublicUrl(path);
+  return data?.publicUrl ?? null;
+}
 
-  useEffect(() => {
-    let mounted = true;
+export default function ProjectScreen() {
+  const { id: projectId } = useLocalSearchParams<{ id: string }>();
+  const nav = useNavigation();
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [mode, setMode] = useState<EditorMode>('read'); // ← ברירת מחדל: צפייה
+  const projectTitle = useMemo(() => `Project ${String(projectId).slice(0, 6)}`, [projectId]);
+
+  
+  // --- הוקים חייבים להיות לפני כל return מותנה ---
+  // counter יציב כדי לשבור קאש רק כש-imageUrl משתנה
+  const cacheBusterRef = React.useRef(0);
+  React.useEffect(() => {
+    cacheBusterRef.current += 1;
+  }, [imageUrl]);
+
+    useEffect(() => {
+    nav.setOptions?.({
+      title: projectTitle,
+      headerRight: () => (
+        <Pressable
+          onPress={() => setMode(m => (m === 'read' ? 'edit' : 'read'))}
+          style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+        >
+          <Text style={{ fontWeight: '600' }}>
+            {mode === 'read' ? 'Edit' : 'Done'}
+          </Text>
+        </Pressable>
+      ),
+    });
+  }, [nav, mode, projectTitle]);
+
+  const bustedUrl = React.useMemo(() => {
+    if (!imageUrl) return null;
+    const sep = imageUrl.includes('?') ? '&' : '?';
+    return `${imageUrl}${sep}v=${cacheBusterRef.current}`;
+  }, [imageUrl]);
+
+  React.useEffect(() => {
     (async () => {
       setLoading(true);
-      // אם יש floorId – נטען אותה; אחרת, נביא את הראשונה
-      const qb = supabase.from('floors').select('id, image_path').limit(1);
-      const { data, error } = floorId
-        ? await qb.eq('id', floorId)
-        : await qb.eq('project_id', id as string)
-                 .order('order_index', { ascending: true, nullsFirst: false })
-                 .order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('floors')
+        .select('image_path')
+        .eq('project_id', projectId)
+        .order('order_index', { ascending: true })
+        .limit(1);
 
-      if (!mounted) return;
-      if (error) { setFloor(null); setLoading(false); return; }
-
-      setFloor(data?.[0] ?? null);
+      if (error) {
+        console.log('floors select error:', error);
+        setImageUrl(null);
+      } else {
+        const path = data?.[0]?.image_path ?? null;
+        setImageUrl(toPublicUrl(path));
+      }
       setLoading(false);
     })();
+  }, [projectId]);
 
-    return () => { mounted = false; };
-  }, [id, floorId]);
-
-  if (loading) return <ActivityIndicator />;
-
-  // אם אין קומה בכלל – הצג את ה־empty state (כפתור Manage Floors וכו')
-  if (!floor) {
-    return (
-      /* המסך הרגיל שלך של “אין קומות עדיין” */
-      <View style={{ flex: 1, backgroundColor: '#0b1420' }} />
-    );
+  // --- עכשיו מותר return מותנה ---
+  if (loading) {
+    return <ActivityIndicator style={{ marginTop: 40 }} />;
   }
 
-  // אם יש קומה אך ללא תמונה – הצג את ה־empty state של אותה קומה (אפשר להשאיר כפתור Manage Floors)
-  if (!floor.image_path) {
-    return (
-      /* אותו empty state, אבל עכשיו זה "אמיתי" עבור הקומה הזו */
-      <View style={{ flex: 1, backgroundColor: '#0b1420' }} />
-    );
-  }
-
-  // אם יש תמונה – הצג "פשוט" את התמונה (ללא הפלנר) או הזן אותה ל־SitePlanner כ-imageUrl
   return (
-    <View style={{ flex: 1, backgroundColor: '#2584ffff' }}>
-      <SitePlanner imageUrl={floor.image_path} floorId={floor.id} projectId={id as string} />
+    <View style={{ flex: 1 }}>
+      {bustedUrl ? (
+        // key מכריח רינדור מחדש כש-url משתנה
+        <SitePlanner key={bustedUrl} imageUrl={bustedUrl} />
+      ) : (
+        <Text style={{ textAlign: 'center', marginTop: 40 }}>
+          אין עדיין תמונה לקומה הזו
+        </Text>
+      )}
     </View>
-    // לחלופין:
-    // <SitePlanner imageUrl={floor.image_path} floorId={floor.id} projectId={id as string} />
   );
 }

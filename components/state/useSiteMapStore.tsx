@@ -1,8 +1,6 @@
 import { nanoid } from 'nanoid/non-secure';
 import { create } from 'zustand';
 
-export type EditorMode = 'view' | 'edit';
-
 export type DeviceType = 'cctv' | 'nvr' | 'ap' | 'switch' | 'router';
 
 export type DeviceNode = {
@@ -17,13 +15,15 @@ export type DeviceNode = {
 export type CablePoint = { x: number; y: number };
 export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean };
 
-export type ToolMode = 'select' | 'place-device' | 'draw-cable';
+export type Mode = 'select' | 'place-device' | 'draw-cable';
 type Viewport = { scale: number; translateX: number; translateY: number };
+
+
 
 type Snapshot = {
   nodes: DeviceNode[];
   cables: Cable[];
-  toolMode: ToolMode;
+  mode: Mode;
   selectedId: string | null;
   selectedCableId: string | null;
   deviceToPlace: DeviceType | null;
@@ -85,6 +85,7 @@ type SiteMapState = {
   setDeviceToPlace: (t: DeviceType | null) => void;
   setViewport: (v: Partial<Viewport>) => void;
 
+  
   // selection
   select: (id: string | null) => void;
   selectCable: (id: string | null) => void;
@@ -121,7 +122,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
 
-  // per-floor backgrounds (new)
+  // per-floor backgrounds
   activeFloorId: undefined,
   floorImages: {},
   currentBackgroundUrl: null,
@@ -130,6 +131,11 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
 
   floorCanvases: {},
   
+  resetBackground: () => set({
+  activeFloorId: undefined,
+  floorImages: {},
+  currentBackgroundUrl: null,
+}),
 
   // history
   historyPast: [],
@@ -143,6 +149,8 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
       activeFloorId: id,
       currentBackgroundUrl: s.floorImages[id] ?? null,
     })),
+
+
 
   setFloorImage: (floorId, uri) =>
     set((s) => ({

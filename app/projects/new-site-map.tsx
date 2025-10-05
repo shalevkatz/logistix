@@ -1,5 +1,6 @@
 // app/projects/new-site-map.tsx
 import { useSiteMapStore } from '@/components/state/useSiteMapStore';
+import { uploadFloorImage } from '@/utils/uploadFloorImage';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -9,7 +10,6 @@ import SitePlanner from '../../components/SitePlanner';
 import type { Cable, DeviceNode } from '../../components/state/useSiteMapStore';
 import { supabase } from '../../lib/supabase';
 import { ensureSafePhoto } from '../../utils/image';
-
 
 type Payload = {
   title: string;
@@ -267,44 +267,29 @@ for (const [idx, lf] of localFloors
     console.log('✅ cables saved for floor', floorDbId, 'count:', cablePayload.length);
   }
 
-  // 2d) IMAGE upload for this floor (React-Native file object, not Blob)
-  const maybeUri = floorImages[lf.id]; // key by local temp id
-  if (maybeUri) {
-    const processed = await ensureSafePhoto(maybeUri);
-    if (!processed) {
-      console.warn('skip upload (process failed) for floor', lf.id);
-    } else {
-      const filename = `site-map-${Date.now()}-${idx}.jpg`;
-      const storagePath = `floors/${floorDbId}/${filename}`;
-      console.log('📤 upload path:', storagePath, '← local floor', lf.id);
+    // 2d) IMAGE upload for this floor
+    const maybeUri = floorImages[lf.id];
+    if (maybeUri) {
+      const processed = await ensureSafePhoto(maybeUri);
+      if (!processed) {
+        console.warn('skip upload (process failed) for floor', lf.id);
+      } else {
+        const storagePath = await uploadFloorImage(processed, floorDbId, idx);
 
-      const file = { uri: processed, name: filename, type: 'image/jpeg' } as any;
-      const { error: upErr } = await supabase.storage
-        .from('site-maps')
-        .upload(storagePath, file, {
-          upsert: true,
-          cacheControl: '3600',
-          contentType: 'image/jpeg',
-        });
-      if (upErr) {
-        console.error('❌ Upload failed for floor', floorDbId, upErr);
-        throw upErr;
+        await supabase
+          .from('floors')
+          .update({ image_path: storagePath })
+          .eq('id', floorDbId);
+
+        console.log('✅ Image uploaded & floor patched for', floorDbId, 'path:', storagePath);
       }
-
-      const { error: patchErr } = await supabase
-        .from('floors')
-        .update({ image_path: storagePath })
-        .eq('id', floorDbId);
-      if (patchErr) throw patchErr;
     }
-  }
-}
-
-console.log('✅ All floors created & devices/cables/images saved');
+  } 
 
 
     // 5) Finish
     clearAll();
+    setSafeUri(null);
     Alert.alert('Success', 'Project and site map created successfully!');
     router.replace('/');
 

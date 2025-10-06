@@ -12,6 +12,9 @@ export type DeviceNode = {
   scale: number;
 };
 
+
+
+
 export type CablePoint = { x: number; y: number };
 export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean };
 
@@ -65,11 +68,16 @@ type SiteMapState = {
   floorImages: Record<string, string | null>;
   currentBackgroundUrl: string | null;
   localFloors: LocalFloor[]; // Add the localFloors array
+  imageDimensions: { width: number; height: number } | null;
+  renderedImageSize: { width: number; height: number; x: number; y: number } | null;
 
+  
   setActiveFloorId: (id: string) => void;
   setFloorImage: (floorId: string, uri: string | null) => void;
   setLocalFloors: (floors: LocalFloor[]) => void; // Add a way to set floors
   setFloorName: (id: string, name: string) => void;
+  setImageDimensions: (dims: { width: number; height: number }) => void;
+  setRenderedImageSize: (size: { width: number; height: number; x: number; y: number }) => void;
   
 
   floorCanvases: Record<string, { nodes: DeviceNode[]; cables: Cable[] }>;
@@ -104,6 +112,8 @@ type SiteMapState = {
   undo: () => void;
   redo: () => void;
   deleteSelected: () => void;
+
+  loadDevices: (devices: DeviceNode[]) => void;
 };
 
 const COLOR_PALETTE = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#06b6d4', '#e11d48'];
@@ -121,6 +131,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   selectedCableId: null,
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
+  loadDevices: (devices) => set({ nodes: devices }),
 
   // per-floor backgrounds
   activeFloorId: undefined,
@@ -128,6 +139,9 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   currentBackgroundUrl: null,
   localFloors: [], // Initialize the localFloors array
 
+
+  imageDimensions: null,
+  renderedImageSize: null,
 
   floorCanvases: {},
   
@@ -148,7 +162,12 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
     set((s) => ({
       activeFloorId: id,
       currentBackgroundUrl: s.floorImages[id] ?? null,
+
+
     })),
+
+    setImageDimensions: (dims) => set({ imageDimensions: dims }),
+    setRenderedImageSize: (size) => set({ renderedImageSize: size }),
 
 
 

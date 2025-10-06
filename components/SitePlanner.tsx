@@ -31,7 +31,8 @@ export default function SitePlanner({
     : (imageUri ?? imageUrl ?? null);
 
   // Palette רק כשיש תמונה וגם במצב עריכה
-  const paletteWidth = effectiveImageUri && editable ? 120 : 0;
+  const paletteWidth = 120;
+  const canvasWidth = width - paletteWidth;
 
   return (
     <View
@@ -43,22 +44,23 @@ export default function SitePlanner({
         overflow: 'hidden',
       }}
     >
-      {/* שכבת הקאנבס — נחסום אינטראקציה במצב read */}
       <View
         style={{ flex: 1 }}
         pointerEvents={editable ? 'auto' : 'none'}
       >
         <Canvas
-          width={width - paletteWidth}
+          width={canvasWidth}  // ← Always the same width
           height={height * 0.62}
           imageUri={effectiveImageUri}
         />
       </View>
 
-      {/* ה־palette מוצג רק ב־edit mode */}
+      {/* Only SHOW palette in edit mode, but space is always reserved */}
       {editable && !!effectiveImageUri && <Palette />}
+      
+      {/* Empty spacer in read mode to keep Canvas width consistent */}
+      {!editable && !!effectiveImageUri && <View style={{ width: paletteWidth }} />}
 
-      {/* תגית קטנה לקריאות בלבד (אופציונלי) */}
       {!editable && (
         <View
           style={{

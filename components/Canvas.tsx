@@ -40,6 +40,10 @@ export default function Canvas({ width, height, imageUri }: Props) {
     select,
     selectedCableId,
     selectCable,
+    imageDimensions,
+    setImageDimensions,
+    renderedImageSize,
+    setRenderedImageSize,
   } = useSiteMapStore();
 
   const deviceToPlace = useSiteMapStore((s) => s.deviceToPlace);
@@ -107,28 +111,45 @@ export default function Canvas({ width, height, imageUri }: Props) {
   );
 
   const tap = Gesture.Tap().onEnd((e) => {
-    'worklet';
-    const x = (e.x - tx.value) / scale.value;
-    const y = (e.y - ty.value) / scale.value;
+  'worklet';
+  const canvasX = (e.x - tx.value) / scale.value;
+  const canvasY = (e.y - ty.value) / scale.value;
 
-    if (mode === 'place-device') {
-      runOnJS(addNodeAt)(x, y, deviceToPlace ?? undefined);
-      return;
+  if (mode === 'place-device') {
+    if (renderedImageSize) {
+      // Convert canvas coords to image percentages
+      const relX = (canvasX - renderedImageSize.x) / renderedImageSize.width;
+      const relY = (canvasY - renderedImageSize.y) / renderedImageSize.height;
+      
+      // Only place if within image bounds
+      if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+        runOnJS(addNodeAt)(relX, relY, deviceToPlace ?? undefined);
+      }
     }
+    return;
+  }
 
-    if (mode === 'draw-cable') {
+  if (mode === 'draw-cable') {
+  if (renderedImageSize) {
+    // Convert canvas coords to image percentages
+    const relX = (canvasX - renderedImageSize.x) / renderedImageSize.width;
+    const relY = (canvasY - renderedImageSize.y) / renderedImageSize.height;
+    
+    // Only add if within image bounds
+    if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
       const last = cables[cables.length - 1];
       if (!last || last.finished) {
-        runOnJS(startCable)(x, y);
+        runOnJS(startCable)(relX, relY);
       } else {
-        runOnJS(addCablePoint)(x, y);
+        runOnJS(addCablePoint)(relX, relY);
       }
-      return;
     }
+  }
+  return;
+}
 
-    // selection mode — do the search on JS thread
-    runOnJS(selectNearestCableJS)(x, y);
-  });
+  runOnJS(selectNearestCableJS)(canvasX, canvasY);
+});
 
   const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => {
     'worklet';
@@ -166,6 +187,31 @@ export default function Canvas({ width, height, imageUri }: Props) {
               source={{ uri: imageUri }}
               style={{ position: 'absolute', left: 0, top: 0, width, height }}
               resizeMode="contain"
+              onLoad={(e) => {
+                const { width: natW, height: natH } = e.nativeEvent.source;
+                setImageDimensions({ width: natW, height: natH });
+
+    
+    // Calculate rendered size with "contain" logic
+    const containerAspect = width / height;
+    const imageAspect = natW / natH;
+    
+    let renderedW: number, renderedH: number, offsetX = 0, offsetY = 0;
+    
+    if (imageAspect > containerAspect) {
+      // Image is wider - fit to width
+      renderedW = width;
+      renderedH = width / imageAspect;
+      offsetY = (height - renderedH) / 2;
+    } else {
+      // Image is taller - fit to height
+      renderedH = height;
+      renderedW = height * imageAspect;
+      offsetX = (width - renderedW) / 2;
+    }
+    
+    setRenderedImageSize({ width: renderedW, height: renderedH, x: offsetX, y: offsetY });
+  }}
             />
 
             {/* Cables layer */}

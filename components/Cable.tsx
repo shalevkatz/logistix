@@ -1,5 +1,6 @@
 import React from 'react';
 import { Path } from 'react-native-svg';
+import { useSiteMapStore } from './state/useSiteMapStore';
 
 type P = { x: number; y: number };
 
@@ -12,8 +13,17 @@ export default function Cable({
   points: P[];
   color?: string;
 }) {
-  if (!points.length) return null;
-  const d = toPath(points);
+  const renderedImageSize = useSiteMapStore((s) => s.renderedImageSize);
+
+  if (!points.length || !renderedImageSize) return null;
+
+  // Convert percentage points to pixel points
+  const pixelPoints = points.map(p => ({
+    x: renderedImageSize.x + (p.x * renderedImageSize.width),
+    y: renderedImageSize.y + (p.y * renderedImageSize.height),
+  }));
+
+  const d = toPath(pixelPoints);
   return (
     <Path
       d={d}
@@ -31,6 +41,3 @@ function toPath(points: P[]) {
   return `M ${round(h.x)} ${round(h.y)} ` + t.map(p => `L ${round(p.x)} ${round(p.y)}`).join(' ');
 }
 const round = (n: number) => Math.round(n * 100) / 100;
-
-
-

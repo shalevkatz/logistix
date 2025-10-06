@@ -1,4 +1,3 @@
-// components/CableAnchors.tsx
 import React from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -19,6 +18,7 @@ const Anchor = React.memo(function Anchor({
   color,
   viewportScale,
   moveCablePoint,
+  renderedImageSize,
 }: {
   cableId: string;
   index: number;
@@ -27,18 +27,25 @@ const Anchor = React.memo(function Anchor({
   color: string;
   viewportScale: number;
   moveCablePoint: (id: string, index: number, dx: number, dy: number) => void;
+  renderedImageSize: { width: number; height: number; x: number; y: number } | null;
 }) {
+  if (!renderedImageSize) return null;
+
   const inv = 1 / viewportScale;
-  const R_SCREEN = 12; // px radius on screen (constant)
+  const R_SCREEN = 12;
   const size = 2 * R_SCREEN * inv;
   const radius = R_SCREEN * inv;
+
+  // Convert percentage to pixels
+  const pixelX = renderedImageSize.x + (x * renderedImageSize.width);
+  const pixelY = renderedImageSize.y + (y * renderedImageSize.height);
 
   const pan = Gesture.Pan()
     .onChange((e) => {
       'worklet';
-      // apply deltas continuously to JS state so the cable updates live
-      const dx = e.changeX * inv;
-      const dy = e.changeY * inv;
+      // Convert pixel deltas to percentage deltas
+      const dx = (e.changeX * inv) / renderedImageSize.width;
+      const dy = (e.changeY * inv) / renderedImageSize.height;
       runOnJS(moveCablePoint)(cableId, index, dx, dy);
     });
 
@@ -48,8 +55,8 @@ const Anchor = React.memo(function Anchor({
         pointerEvents="box-only"
         style={{
           position: 'absolute',
-          left: x - radius,
-          top: y - radius,
+          left: pixelX - radius,
+          top: pixelY - radius,
           width: size,
           height: size,
           borderRadius: radius,
@@ -75,6 +82,7 @@ const Anchor = React.memo(function Anchor({
 export default function CableAnchors({ cableId, points, color }: Props) {
   const viewportScale = useSiteMapStore((s) => s.viewport.scale);
   const moveCablePoint = useSiteMapStore((s) => s.moveCablePoint);
+  const renderedImageSize = useSiteMapStore((s) => s.renderedImageSize);
 
   return (
     <View pointerEvents="box-none" style={{ position: 'absolute', inset: 0 }}>
@@ -88,6 +96,7 @@ export default function CableAnchors({ cableId, points, color }: Props) {
           color={color}
           viewportScale={viewportScale}
           moveCablePoint={moveCablePoint}
+          renderedImageSize={renderedImageSize}
         />
       ))}
     </View>

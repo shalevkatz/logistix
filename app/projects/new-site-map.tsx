@@ -177,6 +177,8 @@ const saveAll = async () => {
 
 // 2) Create ALL floors, then persist devices + cables + image per floor
 const storeNow = useSiteMapStore.getState() as any;
+const imgDims = storeNow.imageDimensions; //saves the image dimensions important for scaling
+
 
 const localFloors: Array<{ id: string; name: string; orderIndex: number }> =
   Array.isArray(storeNow.localFloors) && storeNow.localFloors.length
@@ -246,17 +248,17 @@ for (const [idx, lf] of localFloors
     console.log('✅ devices saved for floor', floorDbId, 'count:', devicePayload.length);
   }
 
-  // 2c) CABLES for this floor
-  const cablesToSave = Array.isArray(canvas.cables) ? (canvas.cables as Cable[]) : [];
-  const cablePayload = cablesToSave
-    .filter((c) => Array.isArray(c.points) && c.points.length >= 2)
-    .map((c) => ({
-      floor_id: floorDbId,
-      project_id: projectId,
-      color: c.color ?? '#3b82f6',
-      finished: !!c.finished,
-      points: c.points.map((p) => ({ x: Number(p.x), y: Number(p.y) })), // jsonb array
-    }));
+// 2c) CABLES for this floor - NO CONVERSION NEEDED, already percentages!
+const cablesToSave = Array.isArray(canvas.cables) ? (canvas.cables as Cable[]) : [];
+const cablePayload = cablesToSave
+  .filter((c) => Array.isArray(c.points) && c.points.length >= 2)
+  .map((c) => ({
+    floor_id: floorDbId,
+    project_id: projectId,
+    color: c.color ?? '#3b82f6',
+    finished: !!c.finished,
+    points: c.points.map((p) => ({ x: Number(p.x), y: Number(p.y) })), // Already percentages!
+  }));
 
   if (cablePayload.length) {
     const { error: cabErr } = await supabase.from('cables').insert(cablePayload);
@@ -267,24 +269,32 @@ for (const [idx, lf] of localFloors
     console.log('✅ cables saved for floor', floorDbId, 'count:', cablePayload.length);
   }
 
-    // 2d) IMAGE upload for this floor
-    const maybeUri = floorImages[lf.id];
-    if (maybeUri) {
-      const processed = await ensureSafePhoto(maybeUri);
-      if (!processed) {
-        console.warn('skip upload (process failed) for floor', lf.id);
-      } else {
-        const storagePath = await uploadFloorImage(processed, floorDbId, idx);
+   // --- 2d) IMAGE upload for this floor --------------
+const maybeUri = floorImages[lf.id];
+if (maybeUri) {
+  console.log('🖼 trying to upload image for floor', lf.id, 'uri:', maybeUri);
+  try {
+    const processed = await ensureSafePhoto(maybeUri);
+    if (!processed) {
+      console.warn('skip upload (process failed) for floor', lf.id);
+    } else {
+      // ⬇️ עטוף את upload בקאץ׳ לניטור ברור
+      const storagePath = await uploadFloorImage(processed, floorDbId, idx);
+      console.log('✅ uploadFloorImage OK →', storagePath);
 
-        await supabase
-          .from('floors')
-          .update({ image_path: storagePath })
-          .eq('id', floorDbId);
+      await supabase
+        .from('floors')
+        .update({ image_path: storagePath })
+        .eq('id', floorDbId);
 
-        console.log('✅ Image uploaded & floor patched for', floorDbId, 'path:', storagePath);
-      }
+      console.log('✅ floor row patched with image_path');
     }
-  } 
+  } catch (err) {
+    console.error('💥 uploadFloorImage FAILED:', err);
+    // נסה להמשיך בלי תמונה כדי לוודא שכל השאר תקין
+    // throw err; // ← אל תזרוק, כדי לראות אם שאר השמירות עוברות
+  }
+}}
 
 
     // 5) Finish
@@ -343,7 +353,7 @@ for (const [idx, lf] of localFloors
 
       {/* Planner area (unchanged): one canvas + one palette */}
       <View style={{ flex: 1 }}>
-        <SitePlanner imageUrl={safeUri} />
+        <SitePlanner imageUrl={safeUri} editable={true} />
       </View>
 
       {/* Manage Floors button — bottom CENTER (opens modal) */}

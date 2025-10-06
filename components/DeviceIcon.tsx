@@ -22,10 +22,22 @@ function DeviceIconImpl({ id, x, y, selected, type }: Props) {
   const moveNode = useSiteMapStore((s) => s.moveNode);
   const select = useSiteMapStore((s) => s.select);
   const viewportScale = useSiteMapStore((s) => s.viewport.scale);
+  const renderedImageSize = useSiteMapStore((s) => s.renderedImageSize);
 
-  // Local "base" position (mirrors props) to avoid a frame gap on drop.
-  const baseX = useSharedValue(x);
-  const baseY = useSharedValue(y);
+    const getPixelX = () => {
+    if (!renderedImageSize) return 0;
+    return renderedImageSize.x + (x * renderedImageSize.width);
+  };
+
+    const getPixelY = () => {
+    if (!renderedImageSize) return 0;
+    return renderedImageSize.y + (y * renderedImageSize.height);
+  };
+
+  
+  // Local "base" position in pixels
+const baseX = useSharedValue(renderedImageSize ? renderedImageSize.x + (x * renderedImageSize.width) : 0);
+const baseY = useSharedValue(renderedImageSize ? renderedImageSize.y + (y * renderedImageSize.height) : 0);
 
   // Drag offsets (world units), and a flag to apply them only during drag.
   const dx = useSharedValue(0);
@@ -34,14 +46,20 @@ function DeviceIconImpl({ id, x, y, selected, type }: Props) {
 
   // Keep local base in sync with props when NOT dragging (prevents rubber-banding).
   useEffect(() => {
-    // Only sync when not dragging to avoid fighting the in-flight drag.
-    // This ensures prop updates from the store don't cause a visual pop.
-    if (!dragging.value) {
-      baseX.value = x;
-      baseY.value = y;
+   console.log('DeviceIcon render:', {
+      id,
+      x,
+      y,
+      renderedImageSize,
+      pixelX: renderedImageSize ? renderedImageSize.x + (x * renderedImageSize.width) : 'N/A',
+      pixelY: renderedImageSize ? renderedImageSize.y + (y * renderedImageSize.height) : 'N/A',
+    });
+    if (!dragging.value && renderedImageSize) {
+      baseX.value = renderedImageSize.x + (x * renderedImageSize.width);
+      baseY.value = renderedImageSize.y + (y * renderedImageSize.height);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x, y]);
+  }, [x, y, renderedImageSize, dragging.value]);
 
   const pan = Gesture.Pan()
     .onBegin(() => {
@@ -53,27 +71,41 @@ function DeviceIconImpl({ id, x, y, selected, type }: Props) {
     })
     .onChange((e) => {
       'worklet';
-      const inv = 1 / (viewportScale || 1); // px -> world units
+      const inv = 1 / (viewportScale || 1);
+      // Store pixel deltas during drag
       dx.value = e.translationX * inv;
       dy.value = e.translationY * inv;
     })
     .onEnd(() => {
       'worklet';
-      // Capture current offsets (world units)
-      const cdx = dx.value;
-      const cdy = dy.value;
+      if (!renderedImageSize) {
+        dragging.value = false;
+        dx.value = 0;
+        dy.value = 0;
+        return;
+      }
 
-      // Optimistically push base position forward locally so there is ZERO flicker:
-      baseX.value = baseX.value + cdx;
-      baseY.value = baseY.value + cdy;
+      // Convert pixel deltas to percentage deltas
+      const inv = 1 / (viewportScale || 1);
+      const pixelDx = dx.value;
+      const pixelDy = dy.value;
+      
+      const percentDx = pixelDx / renderedImageSize.width;
+      const percentDy = pixelDy / renderedImageSize.height;
 
-      // Stop applying animated offsets and clear them
+      // Update local position immediately (in pixels)
+      const newPercentX = x + percentDx;
+      const newPercentY = y + percentDy;
+      baseX.value = renderedImageSize.x + (newPercentX * renderedImageSize.width);
+      baseY.value = renderedImageSize.y + (newPercentY * renderedImageSize.height);
+
+      // Clear drag state
       dragging.value = false;
       dx.value = 0;
       dy.value = 0;
 
-      // Commit to store (prop x/y will update to match soon, but UI is already there)
-      runOnJS(moveNode)(id, cdx, cdy);
+      // Commit percentage deltas to store
+      runOnJS(moveNode)(id, percentDx, percentDy);
     });
 
   const tap = Gesture.Tap().onEnd(() => {

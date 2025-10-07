@@ -25,6 +25,7 @@ export default function Palette() {
   const undo = useSiteMapStore((s) => s.undo);
   const redo = useSiteMapStore((s) => s.redo);
   const deleteSelected = useSiteMapStore((s) => s.deleteSelected);
+  const customDeleteHandler = useSiteMapStore((s: any) => s.customDeleteHandler);
   const canUndo = useSiteMapStore((s) => s.canUndo);
   const canRedo = useSiteMapStore((s) => s.canRedo);
 
@@ -131,7 +132,16 @@ export default function Palette() {
           </View>
         </Button>
 
-        <Button onPress={deleteSelected} bg="#3a1f25">
+        <Button 
+  onPress={() => {
+    if (customDeleteHandler) {
+      customDeleteHandler();
+    } else {
+      deleteSelected();
+    }
+  }} 
+  bg="#3a1f25"
+>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <MIcon name="delete-outline" size={18} color="#fecaca" />
             <Text style={{ color: 'white' }}>Delete</Text>

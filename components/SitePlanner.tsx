@@ -34,7 +34,7 @@ export default function SitePlanner({
   const paletteWidth = 120;
   const canvasWidth = width - paletteWidth;
 
-  return (
+return (
     <View
       style={{
         flex: 1,
@@ -44,21 +44,17 @@ export default function SitePlanner({
         overflow: 'hidden',
       }}
     >
-      <View
-        style={{ flex: 1 }}
-        pointerEvents={editable ? 'auto' : 'none'}
-      >
+      {/* CHANGE: Allow interactions in both modes, Canvas will handle what's allowed */}
+      <View style={{ flex: 1 }}>
         <Canvas
-          width={canvasWidth}  // ← Always the same width
+          width={canvasWidth}
           height={height * 0.62}
           imageUri={effectiveImageUri}
+          editable={editable}
         />
       </View>
 
-      {/* Only SHOW palette in edit mode, but space is always reserved */}
       {editable && !!effectiveImageUri && <Palette />}
-      
-      {/* Empty spacer in read mode to keep Canvas width consistent */}
       {!editable && !!effectiveImageUri && <View style={{ width: paletteWidth }} />}
 
       {!editable && (

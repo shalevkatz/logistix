@@ -24,9 +24,9 @@ function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: numb
   return Math.hypot(px - cx, py - cy);
 }
 
-type Props = { width: number; height: number; imageUri: string | null };
+type Props = { width: number; height: number; imageUri: string | null; editable?: boolean; };
 
-export default function Canvas({ width, height, imageUri }: Props) {
+export default function Canvas({ width, height, imageUri, editable }: Props) {
   const {
     nodes,
     cables,
@@ -88,32 +88,53 @@ export default function Canvas({ width, height, imageUri }: Props) {
       runOnJS(commitViewport)(scale.value, tx.value, ty.value);
     });
 
-  // JS-side selector (safe to call via runOnJS from worklets)
-  const selectNearestCableJS = useCallback(
-    (x: number, y: number) => {
-      let best: { c: CableModel; d: number } | null = null;
-      for (const c of cables) {
-        for (let i = 0; i < c.points.length - 1; i++) {
-          const a = c.points[i];
-          const b = c.points[i + 1];
-          const d = distPointToSeg(x, y, a.x, a.y, b.x, b.y);
-          if (d <= 16 && (!best || d < best.d)) best = { c, d };
-        }
+
+
+const selectNearestCableJS = useCallback(
+  (x: number, y: number) => {
+    if (!renderedImageSize) return;
+    
+    let best: { c: CableModel; d: number } | null = null;
+    for (const c of cables) {
+      for (let i = 0; i < c.points.length - 1; i++) {
+        const a = c.points[i];
+        const b = c.points[i + 1];
+        
+        // Convert percentage points to pixels for distance calculation
+        const aPixel = {
+          x: renderedImageSize.x + (a.x * renderedImageSize.width),
+          y: renderedImageSize.y + (a.y * renderedImageSize.height),
+        };
+        const bPixel = {
+          x: renderedImageSize.x + (b.x * renderedImageSize.width),
+          y: renderedImageSize.y + (b.y * renderedImageSize.height),
+        };
+        
+        const d = distPointToSeg(x, y, aPixel.x, aPixel.y, bPixel.x, bPixel.y);
+        if (d <= 16 && (!best || d < best.d)) best = { c, d };
       }
-      if (best) {
-        selectCable(best.c.id);
-      } else {
-        selectCable(null);
-        select(null);
-      }
-    },
-    [cables, selectCable, select]
-  );
+    }
+    if (best) {
+      selectCable(best.c.id);
+    } else {
+      selectCable(null);
+      select(null);
+    }
+  },
+  [cables, selectCable, select, renderedImageSize]
+);
 
   const tap = Gesture.Tap().onEnd((e) => {
   'worklet';
   const canvasX = (e.x - tx.value) / scale.value;
   const canvasY = (e.y - ty.value) / scale.value;
+
+      // In read-only mode, only allow selecting cables, not placing devices or drawing
+    if (!editable) {
+      runOnJS(selectNearestCableJS)(canvasX, canvasY);
+      return;
+    }
+
 
   if (mode === 'place-device') {
     if (renderedImageSize) {
@@ -170,12 +191,12 @@ export default function Canvas({ width, height, imageUri }: Props) {
       ? cables[cables.length - 1]
       : null;
 
-  const selectedCableObj = useMemo(
+   const selectedCableObj = useMemo(
     () => cables.find((c) => c.id === selectedCableId) ?? null,
     [cables, selectedCableId]
   );
 
-  const anchorsFor = activeCable ?? selectedCableObj;
+  const anchorsFor = editable && selectedCableObj ? selectedCableObj : activeCable;
 
   return (
     <GestureDetector gesture={composed}>

@@ -1,4 +1,5 @@
-// app/projects/[id].tsx - UPDATED VERSION
+// app/projects/[id].tsx - FIXED MULTI-FLOOR SUPPORT
+import FloorManager from '@/components/FloorManager';
 import SitePlanner from '@/components/SitePlanner';
 import { CablePoint, useSiteMapStore } from '@/components/state/useSiteMapStore';
 import { EditorMode } from '@/components/types';
@@ -14,12 +15,16 @@ function toPublicUrl(path: string | null): string | null {
   return data?.publicUrl ?? null;
 }
 
-// Helper function to check if an ID is from the database
-// Database uses UUIDs (with dashes), new items use nanoid (no dashes)
 function isDbId(id: string): boolean {
-  // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
+
+type DbFloor = {
+  id: string;
+  name: string;
+  order_index: number;
+  image_path: string | null;
+};
 
 export default function ProjectScreen() {
   const { id: projectId } = useLocalSearchParams<{ id: string }>();
@@ -28,6 +33,8 @@ export default function ProjectScreen() {
   const [loading, setLoading] = React.useState(true);
   const [mode, setMode] = useState<EditorMode>('read');
   const [floorId, setFloorId] = useState<string | null>(null);
+  const [floorManagerOpen, setFloorManagerOpen] = useState(false);
+  const [dbFloors, setDbFloors] = useState<DbFloor[]>([]);
   const projectTitle = useMemo(() => `Project ${String(projectId).slice(0, 6)}`, [projectId]);
   const loadDevices = useSiteMapStore((s) => s.loadDevices);
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
@@ -40,51 +47,142 @@ export default function ProjectScreen() {
     cacheBusterRef.current += 1;
   }, [imageUrl]);
 
-  // Reload function to refresh data from database
-  const reloadProjectData = useCallback(async () => {
-    if (!floorId) return;
-    
-    console.log('🔄 Reloading project data...');
-    
-    // Reload devices
+  // Load all floors from database
+  const loadAllFloors = useCallback(async () => {
+    const { data: floorsData, error } = await supabase
+      .from('floors')
+      .select('id, name, order_index, image_path')
+      .eq('project_id', projectId)
+      .order('order_index', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error loading floors:', error);
+      return [];
+    }
+
+    return floorsData || [];
+  }, [projectId]);
+
+  // Load devices and cables for a specific floor
+  const loadFloorData = useCallback(async (floorDbId: string) => {
+    console.log('📥 Loading floor data for:', floorDbId);
+
+    // Load devices
     const { data: devicesData } = await supabase
       .from('devices')
       .select('id, type, x, y, rotation, scale')
-      .eq('floor_id', floorId);
+      .eq('floor_id', floorDbId);
 
-    if (devicesData) {
-      const nodes = devicesData.map(d => ({
-        id: String(d.id),
-        type: d.type as any,
-        x: Number(d.x),
-        y: Number(d.y),
-        rotation: Number(d.rotation) || 0,
-        scale: Number(d.scale) || 1,
-      }));
-      
-      loadDevices(nodes);
-      console.log('✅ Reloaded devices:', nodes.length);
-    }
+    const nodes = devicesData?.map(d => ({
+      id: String(d.id),
+      type: d.type as any,
+      x: Number(d.x),
+      y: Number(d.y),
+      rotation: Number(d.rotation) || 0,
+      scale: Number(d.scale) || 1,
+    })) || [];
 
-    // Reload cables
+    // Load cables
     const { data: cablesData } = await supabase
       .from('cables')
       .select('id, color, finished, points')
-      .eq('floor_id', floorId);
+      .eq('floor_id', floorDbId);
 
-    if (cablesData) {
-      const cables = cablesData.map(c => ({
-        id: String(c.id),
-        color: c.color,
-        finished: c.finished,
-        points: c.points as CablePoint[],
-      }));
-      useSiteMapStore.setState({ cables });
-      console.log('✅ Reloaded cables:', cables.length);
+    const cables = cablesData?.map(c => ({
+      id: String(c.id),
+      color: c.color,
+      finished: c.finished,
+      points: c.points as CablePoint[],
+    })) || [];
+
+    console.log('✅ Loaded:', nodes.length, 'devices,', cables.length, 'cables');
+
+    return { nodes, cables };
+  }, []);
+
+  // Switch to a different floor
+  const switchToFloor = useCallback(async (floor: DbFloor) => {
+    console.log('🔄 Switching to floor:', floor.name, floor.id);
+    
+    setFloorId(floor.id);
+    setImageUrl(toPublicUrl(floor.image_path));
+    
+    const { nodes, cables } = await loadFloorData(floor.id);
+    
+    useSiteMapStore.setState({
+      nodes,
+      cables,
+      selectedId: null,
+      selectedCableId: null,
+      mode: 'select',
+    });
+
+    // Update store's floor image tracking
+    const storeSetFloorImage = (useSiteMapStore.getState() as any).setFloorImage;
+    if (storeSetFloorImage) {
+      storeSetFloorImage(floor.id, toPublicUrl(floor.image_path));
     }
-  }, [floorId, loadDevices]);
+  }, [loadFloorData]);
 
-  // Save function - FIXED to use UUID check instead of numeric check
+  // Initialize FloorManager with database floors when opening
+  const handleOpenFloorManager = useCallback(() => {
+    console.log('🏢 Opening floor manager, DB floors:', dbFloors.length);
+    
+    // Convert DB floors to local floor format
+    const localFloors = dbFloors.map(f => ({
+      id: f.id,
+      name: f.name,
+      orderIndex: f.order_index,
+    }));
+    
+    // Set in store
+    useSiteMapStore.getState().setLocalFloors(localFloors);
+    
+    // Set active floor
+    if (floorId) {
+      const storeSetActiveFloorId = (useSiteMapStore.getState() as any).setActiveFloorId;
+      if (storeSetActiveFloorId) {
+        storeSetActiveFloorId(floorId);
+      }
+    }
+    
+    // Set floor images
+    const storeSetFloorImage = (useSiteMapStore.getState() as any).setFloorImage;
+    if (storeSetFloorImage) {
+      dbFloors.forEach(f => {
+        storeSetFloorImage(f.id, toPublicUrl(f.image_path));
+      });
+    }
+    
+    setFloorManagerOpen(true);
+  }, [dbFloors, floorId]);
+
+  // Handle floor manager close and floor switching
+  const handleCloseFloorManager = useCallback(async () => {
+    setFloorManagerOpen(false);
+    
+    // Check if active floor changed
+    const storeActiveFloorId = (useSiteMapStore.getState() as any).activeFloorId;
+    
+    if (storeActiveFloorId && storeActiveFloorId !== floorId) {
+      // Find the floor in dbFloors
+      const newFloor = dbFloors.find(f => f.id === storeActiveFloorId);
+      if (newFloor) {
+        console.log('🔄 Floor changed, switching to:', newFloor.name);
+        await switchToFloor(newFloor);
+      }
+    }
+  }, [floorId, dbFloors, switchToFloor]);
+
+  // Reload function
+  const reloadProjectData = useCallback(async () => {
+    if (!floorId) return;
+    const { nodes, cables } = await loadFloorData(floorId);
+    loadDevices(nodes);
+    useSiteMapStore.setState({ cables });
+  }, [floorId, loadFloorData, loadDevices]);
+
+  // Save function
   const saveCableChanges = useCallback(async () => {
     if (!floorId) return;
     
@@ -92,62 +190,37 @@ export default function ProjectScreen() {
     
     try {
       console.log('💾 Saving changes...');
-      console.log('📦 Total devices:', state.nodes.length);
-      console.log('📦 Total cables:', state.cables.length);
       
-      // Separate devices using UUID check
       const existingDevices = state.nodes.filter(n => isDbId(n.id));
       const newDevices = state.nodes.filter(n => !isDbId(n.id));
       
-      console.log('🔵 Existing devices (UPDATE):', existingDevices.length, existingDevices.map(d => d.id).slice(0, 3));
-      console.log('🟢 New devices (INSERT):', newDevices.length, newDevices.map(d => d.id).slice(0, 3));
-      
-      // 1) DELETE removed devices
+      // DELETE removed devices
       if (deletedDeviceIds.length > 0) {
-        console.log('🗑️ Deleting devices:', deletedDeviceIds.length);
-        const { error } = await supabase
-          .from('devices')
-          .delete()
-          .in('id', deletedDeviceIds);
-          
-        if (error) throw error;
+        await supabase.from('devices').delete().in('id', deletedDeviceIds);
         setDeletedDeviceIds([]);
       }
       
-      // 2) DELETE removed cables
+      // DELETE removed cables
       if (deletedCableIds.length > 0) {
-        console.log('🗑️ Deleting cables:', deletedCableIds.length);
-        const { error } = await supabase
-          .from('cables')
-          .delete()
-          .in('id', deletedCableIds);
-          
-        if (error) throw error;
+        await supabase.from('cables').delete().in('id', deletedCableIds);
         setDeletedCableIds([]);
       }
       
-      // 3) UPDATE existing devices
-      if (existingDevices.length > 0) {
-        console.log('⚙️ Updating devices:', existingDevices.length);
-        for (const device of existingDevices) {
-          const { error } = await supabase
-            .from('devices')
-            .update({
-              x: device.x,
-              y: device.y,
-              rotation: device.rotation,
-              scale: device.scale,
-            })
-            .eq('id', device.id);
-            
-          if (error) throw error;
-        }
-        console.log('✅ Updated devices');
+      // UPDATE existing devices
+      for (const device of existingDevices) {
+        await supabase
+          .from('devices')
+          .update({
+            x: device.x,
+            y: device.y,
+            rotation: device.rotation,
+            scale: device.scale,
+          })
+          .eq('id', device.id);
       }
       
-      // 4) INSERT new devices
+      // INSERT new devices
       if (newDevices.length > 0) {
-        console.log('➕ Inserting devices:', newDevices.length);
         const devicePayload = newDevices.map(n => ({
           floor_id: floorId,
           project_id: projectId,
@@ -157,25 +230,15 @@ export default function ProjectScreen() {
           rotation: n.rotation,
           scale: n.scale,
         }));
-        
-        const { error } = await supabase
-          .from('devices')
-          .insert(devicePayload);
-          
-        if (error) throw error;
-        console.log('✅ Inserted devices');
+        await supabase.from('devices').insert(devicePayload);
       }
       
-      // 5) Handle cables
+      // Handle cables
       const existingCables = state.cables.filter(c => isDbId(c.id));
       const newCables = state.cables.filter(c => !isDbId(c.id));
       
-      console.log('🔵 Existing cables (UPDATE):', existingCables.length);
-      console.log('🟢 New cables (INSERT):', newCables.length);
-      
-      // UPDATE existing cables
       for (const cable of existingCables) {
-        const { error } = await supabase
+        await supabase
           .from('cables')
           .update({
             points: cable.points,
@@ -183,11 +246,8 @@ export default function ProjectScreen() {
             finished: cable.finished,
           })
           .eq('id', cable.id);
-          
-        if (error) throw error;
       }
       
-      // INSERT new cables
       if (newCables.length > 0) {
         const cablePayload = newCables.map(c => ({
           floor_id: floorId,
@@ -196,12 +256,7 @@ export default function ProjectScreen() {
           finished: c.finished,
           points: c.points,
         }));
-        
-        const { error } = await supabase
-          .from('cables')
-          .insert(cablePayload);
-          
-        if (error) throw error;
+        await supabase.from('cables').insert(cablePayload);
       }
       
       console.log('✅ All changes saved!');
@@ -223,14 +278,11 @@ export default function ProjectScreen() {
     if (selectedCableId) {
       if (isDbId(selectedCableId)) {
         setDeletedCableIds(prev => [...prev, selectedCableId]);
-        console.log('📝 Marked cable for deletion:', selectedCableId);
       }
       useSiteMapStore.getState().deleteSelected();
-      
     } else if (selectedId) {
       if (isDbId(selectedId)) {
         setDeletedDeviceIds(prev => [...prev, selectedId]);
-        console.log('📝 Marked device for deletion:', selectedId);
       }
       useSiteMapStore.getState().deleteSelected();
     }
@@ -266,75 +318,27 @@ export default function ProjectScreen() {
     });
   }, [nav, mode, projectTitle, handleModeToggle]);
 
-  // Initial load
+  // Initial load - Load ALL floors
   React.useEffect(() => {
     (async () => {
       setLoading(true);
       
-      const { data: floorData, error: floorError } = await supabase
-        .from('floors')
-        .select('id, image_path')
-        .eq('project_id', projectId)
-        .order('order_index', { ascending: true })
-        .limit(1);
-
-      if (floorError) {
-        console.log('❌ floors error:', floorError);
-        setImageUrl(null);
+      const floors = await loadAllFloors();
+      setDbFloors(floors);
+      
+      if (floors.length === 0) {
+        console.log('⚠️ No floors found for project');
         setLoading(false);
         return;
       }
 
-      const floor = floorData?.[0];
-      if (!floor) {
-        setLoading(false);
-        return;
-      }
-
-      setFloorId(floor.id);
-      setImageUrl(toPublicUrl(floor.image_path));
-
-      // Load devices
-      const { data: devicesData } = await supabase
-        .from('devices')
-        .select('id, type, x, y, rotation, scale')
-        .eq('floor_id', floor.id);
-
-      if (devicesData) {
-        const nodes = devicesData.map(d => ({
-          id: String(d.id),
-          type: d.type as any,
-          x: Number(d.x),
-          y: Number(d.y),
-          rotation: Number(d.rotation) || 0,
-          scale: Number(d.scale) || 1,
-        }));
-        
-        loadDevices(nodes);
-        console.log('✅ Initial load - devices:', nodes.length);
-      }
-
-      // Load cables
-      const { data: cablesData } = await supabase
-        .from('cables')
-        .select('id, color, finished, points')
-        .eq('floor_id', floor.id);
-
-      if (cablesData) {
-        const cables = cablesData.map(c => ({
-          id: String(c.id),
-          color: c.color,
-          finished: c.finished,
-          points: c.points as CablePoint[],
-        }));
-        
-        useSiteMapStore.setState({ cables });
-        console.log('✅ Initial load - cables:', cables.length);
-      }
-
+      // Load first floor by default
+      const firstFloor = floors[0];
+      await switchToFloor(firstFloor);
+      
       setLoading(false);
     })();
-  }, [projectId, loadDevices]);
+  }, [projectId, loadAllFloors, switchToFloor]);
 
   const bustedUrl = React.useMemo(() => {
     if (!imageUrl) return null;
@@ -348,6 +352,7 @@ export default function ProjectScreen() {
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Back Button */}
       <View
         style={{
           position: 'absolute',
@@ -369,6 +374,7 @@ export default function ProjectScreen() {
         </Pressable>
       </View>
       
+      {/* Edit/Done Button */}
       <View
         pointerEvents="box-none"
         style={{
@@ -392,7 +398,33 @@ export default function ProjectScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {/* Manage Floors Button */}
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: 'absolute',
+          top: (insets?.top ?? 0) + 8,
+          right: 12,
+          zIndex: 999,
+        }}
+      >
+        <Pressable
+          onPress={handleOpenFloorManager}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            backgroundColor: 'rgba(55, 65, 81, 0.8)',
+            borderRadius: 20,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700' }}>
+            Manage Floors
+          </Text>
+        </Pressable>
+      </View>
       
+      {/* Site Planner */}
       {bustedUrl ? (
         <SitePlanner key={bustedUrl} imageUrl={bustedUrl} editable={mode === 'edit'} />
       ) : (
@@ -400,6 +432,15 @@ export default function ProjectScreen() {
           אין עדיין תמונה לקומה הזו
         </Text>
       )}
+
+      {/* Floor Manager Modal */}
+      <FloorManager
+        visible={floorManagerOpen}
+        onClose={handleCloseFloorManager}
+        seedBackground={imageUrl}
+        existingFloors={dbFloors}
+        onFloorSwitch={switchToFloor}
+      />
     </View>
   );
 }

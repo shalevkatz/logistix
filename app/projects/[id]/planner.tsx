@@ -399,30 +399,59 @@ export default function ProjectScreen() {
         </Pressable>
       </View>
 
-      {/* Manage Floors Button */}
-      <View
-        pointerEvents="box-none"
-        style={{
-          position: 'absolute',
-          top: (insets?.top ?? 0) + 8,
-          right: 12,
-          zIndex: 999,
-        }}
-      >
-        <Pressable
-          onPress={handleOpenFloorManager}
+      {/* Manage Floors Button - Only show when NOT in edit mode */}
+      {mode === 'read' && (
+        <View
+          pointerEvents="box-none"
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            backgroundColor: 'rgba(55, 65, 81, 0.8)',
-            borderRadius: 20,
+            position: 'absolute',
+            top: (insets?.top ?? 0) + 8,
+            right: 12,
+            zIndex: 999,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>
-            Manage Floors
-          </Text>
-        </Pressable>
-      </View>
+          <Pressable
+            onPress={handleOpenFloorManager}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              backgroundColor: 'rgba(55, 65, 81, 0.8)',
+              borderRadius: 20,
+            }}
+          >
+            <Text style={{ color: 'white', fontWeight: '700' }}>
+              Manage Floors
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Manage Floors Button - Bottom position when in edit mode */}
+      {mode === 'edit' && (
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            bottom: 100,
+            alignSelf: 'center',
+            zIndex: 999,
+          }}
+        >
+          <Pressable
+            onPress={handleOpenFloorManager}
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              backgroundColor: 'rgba(55, 65, 81, 0.8)',
+              borderRadius: 20,
+            }}
+          >
+            <Text style={{ color: 'white', fontWeight: '700' }}>
+              Manage Floors
+            </Text>
+          </Pressable>
+        </View>
+      )}
       
       {/* Site Planner */}
       {bustedUrl ? (

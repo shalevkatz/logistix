@@ -260,6 +260,7 @@ const selectNearestCableJS = useCallback(
                   y={n.y}
                   selected={selectedId === n.id}
                   type={n.type}
+                  editable={editable}
                 />
               ))}
             </View>

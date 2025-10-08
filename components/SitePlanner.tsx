@@ -6,35 +6,35 @@ import Palette from './Palette';
 import { useSiteMapStore } from './state/useSiteMapStore';
 
 type Props = {
-  // Used only in creation flow (no active floor yet)
   imageUrl?: string | null;
   imageUri?: string | null;
   floorId?: string;
   projectId?: string;
-  editable?: boolean; // read-only by default
+  editable?: boolean;
+  onDeviceTapInReadMode?: (deviceId: string) => void;
+  onCableTapInReadMode?: (cableId: string) => void;
 };
 
 export default function SitePlanner({
   imageUrl,
   imageUri,
-  editable = false, // ← דיפולט: read mode
+  editable = false,
+  onDeviceTapInReadMode,
+  onCableTapInReadMode,
 }: Props) {
   const { width, height } = Dimensions.get('window');
 
-  // PURE selectors
   const activeFloorId = useSiteMapStore((s: any) => s.activeFloorId as string | undefined);
   const currentBackgroundUrl = useSiteMapStore((s: any) => s.currentBackgroundUrl as string | null);
 
-  // Active floor wins; else fallback to props (creation flow)
   const effectiveImageUri = activeFloorId
     ? (currentBackgroundUrl ?? null)
     : (imageUri ?? imageUrl ?? null);
 
-  // Palette רק כשיש תמונה וגם במצב עריכה
   const paletteWidth = 120;
   const canvasWidth = width - paletteWidth;
 
-return (
+  return (
     <View
       style={{
         flex: 1,
@@ -44,13 +44,14 @@ return (
         overflow: 'hidden',
       }}
     >
-      {/* CHANGE: Allow interactions in both modes, Canvas will handle what's allowed */}
       <View style={{ flex: 1 }}>
         <Canvas
           width={canvasWidth}
           height={height * 0.62}
           imageUri={effectiveImageUri}
           editable={editable}
+          onDeviceTapInReadMode={onDeviceTapInReadMode}
+          onCableTapInReadMode={onCableTapInReadMode}
         />
       </View>
 
@@ -69,7 +70,7 @@ return (
             backgroundColor: 'rgba(0,0,0,0.5)',
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '600' }}>Read-only</Text>
+          <Text style={{ color: 'white', fontWeight: '600' }}>Tap device to set status</Text>
         </View>
       )}
     </View>

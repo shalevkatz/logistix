@@ -1,4 +1,4 @@
-// components/Canvas.tsx
+// components/Canvas.tsx - UPDATED WITH STATUS SUPPORT
 import { MaterialCommunityIcons as MIcon } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { Image, Text, View } from 'react-native';
@@ -12,7 +12,6 @@ import DeviceIcon from './DeviceIcon';
 import type { Cable as CableModel } from './state/useSiteMapStore';
 import { useSiteMapStore } from './state/useSiteMapStore';
 
-// ---------- helpers (pure JS) ----------
 function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
   const abx = bx - ax, aby = by - ay;
   const apx = px - ax, apy = py - ay;
@@ -24,9 +23,16 @@ function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: numb
   return Math.hypot(px - cx, py - cy);
 }
 
-type Props = { width: number; height: number; imageUri: string | null; editable?: boolean; };
+type Props = { 
+  width: number; 
+  height: number; 
+  imageUri: string | null; 
+  editable?: boolean;
+  onDeviceTapInReadMode?: (deviceId: string) => void;
+  onCableTapInReadMode?: (cableId: string) => void;
+};
 
-export default function Canvas({ width, height, imageUri, editable }: Props) {
+export default function Canvas({ width, height, imageUri, editable, onDeviceTapInReadMode, onCableTapInReadMode }: Props) {
   const {
     nodes,
     cables,
@@ -49,14 +55,12 @@ export default function Canvas({ width, height, imageUri, editable }: Props) {
   const deviceToPlace = useSiteMapStore((s) => s.deviceToPlace);
   const startCable = useSiteMapStore((s) => s.startCable);
 
-  // --- pan/zoom shared values (keep hooks unconditional)
   const scale = useSharedValue(viewport.scale);
   const tx = useSharedValue(viewport.translateX);
   const ty = useSharedValue(viewport.translateY);
 
   useEffect(() => {
     setViewport({ scale: scale.value, translateX: tx.value, translateY: ty.value });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const commitViewport = useCallback(
@@ -88,9 +92,7 @@ export default function Canvas({ width, height, imageUri, editable }: Props) {
       runOnJS(commitViewport)(scale.value, tx.value, ty.value);
     });
 
-
-
-const selectNearestCableJS = useCallback(
+  const selectNearestCableJS = useCallback(
   (x: number, y: number) => {
     if (!renderedImageSize) return;
     
@@ -100,7 +102,6 @@ const selectNearestCableJS = useCallback(
         const a = c.points[i];
         const b = c.points[i + 1];
         
-        // Convert percentage points to pixels for distance calculation
         const aPixel = {
           x: renderedImageSize.x + (a.x * renderedImageSize.width),
           y: renderedImageSize.y + (a.y * renderedImageSize.height),
@@ -116,61 +117,59 @@ const selectNearestCableJS = useCallback(
     }
     if (best) {
       selectCable(best.c.id);
+      // Trigger callback in read mode
+      if (!editable && onCableTapInReadMode) {
+        onCableTapInReadMode(best.c.id);
+      }
     } else {
       selectCable(null);
       select(null);
     }
   },
-  [cables, selectCable, select, renderedImageSize]
+  [cables, selectCable, select, renderedImageSize, editable, onCableTapInReadMode]
 );
 
   const tap = Gesture.Tap().onEnd((e) => {
-  'worklet';
-  const canvasX = (e.x - tx.value) / scale.value;
-  const canvasY = (e.y - ty.value) / scale.value;
+    'worklet';
+    const canvasX = (e.x - tx.value) / scale.value;
+    const canvasY = (e.y - ty.value) / scale.value;
 
-      // In read-only mode, only allow selecting cables, not placing devices or drawing
     if (!editable) {
       runOnJS(selectNearestCableJS)(canvasX, canvasY);
       return;
     }
 
-
-  if (mode === 'place-device') {
-    if (renderedImageSize) {
-      // Convert canvas coords to image percentages
-      const relX = (canvasX - renderedImageSize.x) / renderedImageSize.width;
-      const relY = (canvasY - renderedImageSize.y) / renderedImageSize.height;
-      
-      // Only place if within image bounds
-      if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
-        runOnJS(addNodeAt)(relX, relY, deviceToPlace ?? undefined);
+    if (mode === 'place-device') {
+      if (renderedImageSize) {
+        const relX = (canvasX - renderedImageSize.x) / renderedImageSize.width;
+        const relY = (canvasY - renderedImageSize.y) / renderedImageSize.height;
+        
+        if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+          runOnJS(addNodeAt)(relX, relY, deviceToPlace ?? undefined);
+        }
       }
+      return;
     }
-    return;
-  }
 
-  if (mode === 'draw-cable') {
-  if (renderedImageSize) {
-    // Convert canvas coords to image percentages
-    const relX = (canvasX - renderedImageSize.x) / renderedImageSize.width;
-    const relY = (canvasY - renderedImageSize.y) / renderedImageSize.height;
-    
-    // Only add if within image bounds
-    if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
-      const last = cables[cables.length - 1];
-      if (!last || last.finished) {
-        runOnJS(startCable)(relX, relY);
-      } else {
-        runOnJS(addCablePoint)(relX, relY);
+    if (mode === 'draw-cable') {
+      if (renderedImageSize) {
+        const relX = (canvasX - renderedImageSize.x) / renderedImageSize.width;
+        const relY = (canvasY - renderedImageSize.y) / renderedImageSize.height;
+        
+        if (relX >= 0 && relX <= 1 && relY >= 0 && relY <= 1) {
+          const last = cables[cables.length - 1];
+          if (!last || last.finished) {
+            runOnJS(startCable)(relX, relY);
+          } else {
+            runOnJS(addCablePoint)(relX, relY);
+          }
+        }
       }
+      return;
     }
-  }
-  return;
-}
 
-  runOnJS(selectNearestCableJS)(canvasX, canvasY);
-});
+    runOnJS(selectNearestCableJS)(canvasX, canvasY);
+  });
 
   const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => {
     'worklet';
@@ -183,7 +182,6 @@ const selectNearestCableJS = useCallback(
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
   }));
 
-  // which cable shows anchors
   const activeCable =
     mode === 'draw-cable' &&
     cables.length > 0 &&
@@ -191,7 +189,7 @@ const selectNearestCableJS = useCallback(
       ? cables[cables.length - 1]
       : null;
 
-   const selectedCableObj = useMemo(
+  const selectedCableObj = useMemo(
     () => cables.find((c) => c.id === selectedCableId) ?? null,
     [cables, selectedCableId]
   );
@@ -203,7 +201,6 @@ const selectNearestCableJS = useCallback(
       <View style={{ width, height, backgroundColor: '#0b1020', overflow: 'hidden' }}>
         {imageUri ? (
           <Animated.View style={[{ width, height }, aStyle]}>
-            {/* Background as native Image (more robust with remote URLs) */}
             <Image
               source={{ uri: imageUri }}
               style={{ position: 'absolute', left: 0, top: 0, width, height }}
@@ -212,37 +209,31 @@ const selectNearestCableJS = useCallback(
                 const { width: natW, height: natH } = e.nativeEvent.source;
                 setImageDimensions({ width: natW, height: natH });
 
-    
-    // Calculate rendered size with "contain" logic
-    const containerAspect = width / height;
-    const imageAspect = natW / natH;
-    
-    let renderedW: number, renderedH: number, offsetX = 0, offsetY = 0;
-    
-    if (imageAspect > containerAspect) {
-      // Image is wider - fit to width
-      renderedW = width;
-      renderedH = width / imageAspect;
-      offsetY = (height - renderedH) / 2;
-    } else {
-      // Image is taller - fit to height
-      renderedH = height;
-      renderedW = height * imageAspect;
-      offsetX = (width - renderedW) / 2;
-    }
-    
-    setRenderedImageSize({ width: renderedW, height: renderedH, x: offsetX, y: offsetY });
-  }}
+                const containerAspect = width / height;
+                const imageAspect = natW / natH;
+                
+                let renderedW: number, renderedH: number, offsetX = 0, offsetY = 0;
+                
+                if (imageAspect > containerAspect) {
+                  renderedW = width;
+                  renderedH = width / imageAspect;
+                  offsetY = (height - renderedH) / 2;
+                } else {
+                  renderedH = height;
+                  renderedW = height * imageAspect;
+                  offsetX = (width - renderedW) / 2;
+                }
+                
+                setRenderedImageSize({ width: renderedW, height: renderedH, x: offsetX, y: offsetY });
+              }}
             />
 
-            {/* Cables layer */}
             <Svg width={width} height={height} style={{ position: 'absolute', left: 0, top: 0 }}>
               {cables.map((c) => (
                 <CablePath key={c.id} id={c.id} points={c.points} color={c.color} />
               ))}
             </Svg>
 
-            {/* Devices & anchors layer */}
             <View style={{ position: 'absolute', inset: 0 }} pointerEvents="box-none">
               {anchorsFor && (
                 <CableAnchors
@@ -261,12 +252,13 @@ const selectNearestCableJS = useCallback(
                   selected={selectedId === n.id}
                   type={n.type}
                   editable={editable}
+                  status={n.status ?? null}
+                  onTapInReadMode={onDeviceTapInReadMode}
                 />
               ))}
             </View>
           </Animated.View>
         ) : (
-          // Placeholder (non-gesture, non-worklet)
           <View
             style={{
               flex: 1,

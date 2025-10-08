@@ -1,4 +1,6 @@
 // app/projects/[id].tsx - FIXED MULTI-FLOOR SUPPORT
+import CableStatusSelector from '@/components/CableStatusSelector';
+import DeviceStatusSelector from '@/components/DeviceStatusSelector';
 import FloorManager from '@/components/FloorManager';
 import SitePlanner from '@/components/SitePlanner';
 import { CablePoint, useSiteMapStore } from '@/components/state/useSiteMapStore';
@@ -40,12 +42,103 @@ export default function ProjectScreen() {
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
   const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
 
+const [cableStatusModalVisible, setCableStatusModalVisible] = useState(false);
+const [cableToEditStatus, setCableToEditStatus] = useState<string | null>(null);
+
+const [statusModalVisible, setStatusModalVisible] = useState(false);
+const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null);
+
   const insets = useSafeAreaInsets();
   const cacheBusterRef = React.useRef(0);
 
   React.useEffect(() => {
     cacheBusterRef.current += 1;
   }, [imageUrl]);
+
+// Handle device tap in read mode (for status change)
+const handleDeviceTapInReadMode = useCallback((deviceId: string) => {
+  console.log('🎯 Device tapped in read mode:', deviceId);
+  setDeviceToEditStatus(deviceId);
+  setStatusModalVisible(true);
+}, []);
+
+// Handle status change
+const handleStatusChange = useCallback(async (status: 'installed' | 'pending' | 'cannot_install' | null) => {
+  if (!deviceToEditStatus) return;
+
+  console.log('📊 Changing device status:', deviceToEditStatus, status);
+
+  // Update in store
+  const nodes = useSiteMapStore.getState().nodes;
+  const updatedNodes = nodes.map(n => 
+    n.id === deviceToEditStatus ? { ...n, status } : n
+  );
+  useSiteMapStore.setState({ nodes: updatedNodes });
+
+  // Update in database if it's a DB device
+  if (isDbId(deviceToEditStatus)) {
+    try {
+      const { error } = await supabase
+        .from('devices')
+        .update({ status })
+        .eq('id', deviceToEditStatus);
+
+      if (error) {
+        console.error('❌ Failed to update device status:', error);
+        Alert.alert('Error', 'Failed to update device status');
+      } else {
+        console.log('✅ Device status updated in database');
+      }
+    } catch (err) {
+      console.error('❌ Error updating device status:', err);
+    }
+  }
+
+  setDeviceToEditStatus(null);
+}, [deviceToEditStatus]);
+
+
+// Handle cable tap in read mode
+const handleCableTapInReadMode = useCallback((cableId: string) => {
+  console.log('🎯 Cable tapped in read mode:', cableId);
+  setCableToEditStatus(cableId);
+  setCableStatusModalVisible(true);
+}, []);
+
+// Handle cable status change
+const handleCableStatusChange = useCallback(async (status: 'installed' | 'pending' | 'cannot_install' | null) => {
+  if (!cableToEditStatus) return;
+
+  console.log('📊 Changing cable status:', cableToEditStatus, status);
+
+  // Update in store
+  const cables = useSiteMapStore.getState().cables;
+  const updatedCables = cables.map(c => 
+    c.id === cableToEditStatus ? { ...c, status } : c
+  );
+  useSiteMapStore.setState({ cables: updatedCables });
+
+  // Update in database if it's a DB cable
+  if (isDbId(cableToEditStatus)) {
+    try {
+      const { error } = await supabase
+        .from('cables')
+        .update({ status })
+        .eq('id', cableToEditStatus);
+
+      if (error) {
+        console.error('❌ Failed to update cable status:', error);
+        Alert.alert('Error', 'Failed to update cable status');
+      } else {
+        console.log('✅ Cable status updated in database');
+      }
+    } catch (err) {
+      console.error('❌ Error updating cable status:', err);
+    }
+  }
+
+  setCableToEditStatus(null);
+}, [cableToEditStatus]);
 
   // Load all floors from database
   const loadAllFloors = useCallback(async () => {
@@ -70,7 +163,7 @@ export default function ProjectScreen() {
     // Load devices
     const { data: devicesData } = await supabase
       .from('devices')
-      .select('id, type, x, y, rotation, scale')
+      .select('id, type, x, y, rotation, scale, status')
       .eq('floor_id', floorDbId);
 
     const nodes = devicesData?.map(d => ({
@@ -80,12 +173,13 @@ export default function ProjectScreen() {
       y: Number(d.y),
       rotation: Number(d.rotation) || 0,
       scale: Number(d.scale) || 1,
+      status: d.status as any,
     })) || [];
 
     // Load cables
     const { data: cablesData } = await supabase
       .from('cables')
-      .select('id, color, finished, points')
+      .select('id, color, finished, points, status')
       .eq('floor_id', floorDbId);
 
     const cables = cablesData?.map(c => ({
@@ -93,6 +187,7 @@ export default function ProjectScreen() {
       color: c.color,
       finished: c.finished,
       points: c.points as CablePoint[],
+      status: c.status as any,
     })) || [];
 
     console.log('✅ Loaded:', nodes.length, 'devices,', cables.length, 'cables');
@@ -215,6 +310,7 @@ export default function ProjectScreen() {
             y: device.y,
             rotation: device.rotation,
             scale: device.scale,
+            status: device.status,
           })
           .eq('id', device.id);
       }
@@ -229,6 +325,7 @@ export default function ProjectScreen() {
           y: n.y,
           rotation: n.rotation,
           scale: n.scale,
+          status: n.status,
         }));
         await supabase.from('devices').insert(devicePayload);
       }
@@ -244,6 +341,7 @@ export default function ProjectScreen() {
             points: cable.points,
             color: cable.color,
             finished: cable.finished,
+            status: cable.status,
           })
           .eq('id', cable.id);
       }
@@ -255,6 +353,7 @@ export default function ProjectScreen() {
           color: c.color,
           finished: c.finished,
           points: c.points,
+          status: c.status,
         }));
         await supabase.from('cables').insert(cablePayload);
       }
@@ -455,7 +554,7 @@ export default function ProjectScreen() {
       
       {/* Site Planner */}
       {bustedUrl ? (
-        <SitePlanner key={bustedUrl} imageUrl={bustedUrl} editable={mode === 'edit'} />
+        <SitePlanner key={bustedUrl} imageUrl={bustedUrl} editable={mode === 'edit'} onDeviceTapInReadMode={handleDeviceTapInReadMode} onCableTapInReadMode={handleCableTapInReadMode} />
       ) : (
         <Text style={{ textAlign: 'center', marginTop: 200 }}>
           אין עדיין תמונה לקומה הזו
@@ -470,6 +569,34 @@ export default function ProjectScreen() {
         existingFloors={dbFloors}
         onFloorSwitch={switchToFloor}
       />
+      <DeviceStatusSelector
+  visible={statusModalVisible}
+  currentStatus={
+    deviceToEditStatus 
+      ? useSiteMapStore.getState().nodes.find(n => n.id === deviceToEditStatus)?.status ?? null
+      : null
+  }
+  onClose={() => {
+    setStatusModalVisible(false);
+    setDeviceToEditStatus(null);
+  }}
+  onSelectStatus={handleStatusChange}
+/>
+
+<CableStatusSelector
+  visible={cableStatusModalVisible}
+  currentStatus={
+    cableToEditStatus 
+      ? useSiteMapStore.getState().cables.find(c => c.id === cableToEditStatus)?.status ?? null
+      : null
+  }
+  onClose={() => {
+    setCableStatusModalVisible(false);
+    setCableToEditStatus(null);
+  }}
+  onSelectStatus={handleCableStatusChange}
+/>
+
     </View>
   );
 }

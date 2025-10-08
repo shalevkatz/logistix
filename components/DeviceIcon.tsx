@@ -1,4 +1,4 @@
-// components/DeviceIcon.tsx - FIXED WITH EDITABLE SUPPORT
+// components/DeviceIcon.tsx - WITH STATUS SUPPORT
 import React, { memo, useEffect } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -16,24 +16,16 @@ type Props = {
   y: number;
   selected: boolean;
   type: DeviceType;
-  editable?: boolean; // NEW: controls whether device can be dragged
+  editable?: boolean;
+  status?: 'installed' | 'pending' | 'cannot_install' | null;
+  onTapInReadMode?: (id: string) => void;
 };
 
-function DeviceIconImpl({ id, x, y, selected, type, editable = false }: Props) {
+function DeviceIconImpl({ id, x, y, selected, type, editable = false, status = null, onTapInReadMode }: Props) {
   const moveNode = useSiteMapStore((s) => s.moveNode);
   const select = useSiteMapStore((s) => s.select);
   const viewportScale = useSiteMapStore((s) => s.viewport.scale);
   const renderedImageSize = useSiteMapStore((s) => s.renderedImageSize);
-
-  const getPixelX = () => {
-    if (!renderedImageSize) return 0;
-    return renderedImageSize.x + (x * renderedImageSize.width);
-  };
-
-  const getPixelY = () => {
-    if (!renderedImageSize) return 0;
-    return renderedImageSize.y + (y * renderedImageSize.height);
-  };
 
   const baseX = useSharedValue(renderedImageSize ? renderedImageSize.x + (x * renderedImageSize.width) : 0);
   const baseY = useSharedValue(renderedImageSize ? renderedImageSize.y + (y * renderedImageSize.height) : 0);
@@ -43,23 +35,14 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false }: Props) {
   const dragging = useSharedValue(false);
 
   useEffect(() => {
-    console.log('DeviceIcon render:', {
-      id,
-      x,
-      y,
-      renderedImageSize,
-      pixelX: renderedImageSize ? renderedImageSize.x + (x * renderedImageSize.width) : 'N/A',
-      pixelY: renderedImageSize ? renderedImageSize.y + (y * renderedImageSize.height) : 'N/A',
-    });
     if (!dragging.value && renderedImageSize) {
       baseX.value = renderedImageSize.x + (x * renderedImageSize.width);
       baseY.value = renderedImageSize.y + (y * renderedImageSize.height);
     }
   }, [x, y, renderedImageSize, dragging.value]);
 
-  // Pan gesture - ONLY enabled when editable
   const pan = Gesture.Pan()
-    .enabled(editable) // 🔥 KEY FIX: Disable dragging in read mode
+    .enabled(editable)
     .onBegin(() => {
       'worklet';
       dragging.value = true;
@@ -82,7 +65,6 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false }: Props) {
         return;
       }
 
-      const inv = 1 / (viewportScale || 1);
       const pixelDx = dx.value;
       const pixelDy = dy.value;
       
@@ -103,14 +85,31 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false }: Props) {
 
   const tap = Gesture.Tap().onEnd(() => {
     'worklet';
-    runOnJS(select)(id);
+    if (editable) {
+      runOnJS(select)(id);
+    } else {
+      if (onTapInReadMode) {
+        runOnJS(onTapInReadMode)(id);
+      }
+    }
   });
 
-  // Combine gestures - pan only works when editable=true
   const gesture = Gesture.Simultaneous(pan, tap);
 
   const SIZE = 50;
   const R = 14;
+
+  const getStatusColor = () => {
+    switch (status) {
+      case 'installed': return '#22c55e';
+      case 'pending': return '#f59e0b';
+      case 'cannot_install': return '#ef4444';
+      default: return 'transparent';
+    }
+  };
+
+  const statusColor = getStatusColor();
+  const hasStatus = status !== null;
 
   const aStyle = useAnimatedStyle(() => {
     const offX = dragging.value ? dx.value : 0;
@@ -127,6 +126,23 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false }: Props) {
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={aStyle} pointerEvents="box-none">
+        {/* Status ring - only show in read mode */}
+        {!editable && hasStatus && (
+          <View
+            style={{
+              position: 'absolute',
+              top: SIZE / 2 - R - 4,
+              left: SIZE / 2 - R - 4,
+              width: (R + 4) * 2,
+              height: (R + 4) * 2,
+              borderRadius: R + 4,
+              borderWidth: 3 / (viewportScale || 1),
+              borderColor: statusColor,
+              backgroundColor: 'transparent',
+            }}
+          />
+        )}
+        
         <View
           style={{
             flex: 1,

@@ -10,13 +10,14 @@ export type DeviceNode = {
   y: number;
   rotation: number;
   scale: number;
+  status?: 'installed' | 'pending' | 'cannot_install' | null;
 };
 
 
 
 
 export type CablePoint = { x: number; y: number };
-export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean };
+export type Cable = { id: string; points: CablePoint[]; color: string; finished: boolean; status?: 'installed' | 'pending' | 'cannot_install' | null; };
 
 export type Mode = 'select' | 'place-device' | 'draw-cable';
 type Viewport = { scale: number; translateX: number; translateY: number };
@@ -78,6 +79,8 @@ type SiteMapState = {
   setFloorName: (id: string, name: string) => void;
   setImageDimensions: (dims: { width: number; height: number }) => void;
   setRenderedImageSize: (size: { width: number; height: number; x: number; y: number }) => void;
+  
+
   
 
   floorCanvases: Record<string, { nodes: DeviceNode[]; cables: Cable[] }>;
@@ -165,6 +168,14 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
 
 
     })),
+
+    setDeviceStatus: (deviceId: string, status: 'installed' | 'pending' | 'cannot_install' | null) => {
+  set((state) => ({
+    nodes: state.nodes.map(n => 
+      n.id === deviceId ? { ...n, status } : n
+    )
+  }));
+},
 
     setImageDimensions: (dims) => set({ imageDimensions: dims }),
     setRenderedImageSize: (size) => set({ renderedImageSize: size }),

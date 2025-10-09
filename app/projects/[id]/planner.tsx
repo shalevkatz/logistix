@@ -7,8 +7,9 @@ import { CablePoint, useSiteMapStore } from '@/components/state/useSiteMapStore'
 import { EditorMode } from '@/components/types';
 import { supabase } from '@/lib/supabase';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import ConfettiCannon from 'react-native-confetti-cannon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function toPublicUrl(path: string | null): string | null {
@@ -42,6 +43,27 @@ export default function ProjectScreen() {
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
   const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
 
+  // Confetti for completion
+  const confettiRef = useRef<any>(null);
+  const [hasShownConfetti, setHasShownConfetti] = useState(false);
+
+  // Subscribe to store changes for progress calculation
+  const storeNodes = useSiteMapStore((s) => s.nodes);
+  const storeCables = useSiteMapStore((s) => s.cables);
+
+  // Calculate project progress
+  const projectProgress = useMemo(() => {
+    const totalItems = storeNodes.length + storeCables.length;
+    
+    if (totalItems === 0) return 0;
+    
+    const completedDevices = storeNodes.filter(n => n.status === 'installed').length;
+    const completedCables = storeCables.filter(c => c.status === 'installed').length;
+    const completedItems = completedDevices + completedCables;
+    
+    return Math.round((completedItems / totalItems) * 100);
+  }, [storeNodes, storeCables]);
+
 const [cableStatusModalVisible, setCableStatusModalVisible] = useState(false);
 const [cableToEditStatus, setCableToEditStatus] = useState<string | null>(null);
 
@@ -54,6 +76,17 @@ const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null
   React.useEffect(() => {
     cacheBusterRef.current += 1;
   }, [imageUrl]);
+
+  // Trigger confetti when project reaches 100%
+  useEffect(() => {
+    if (projectProgress === 100 && !hasShownConfetti && storeNodes.length + storeCables.length > 0) {
+      confettiRef.current?.start();
+      setHasShownConfetti(true);
+    } else if (projectProgress < 100) {
+      // Reset confetti flag if progress drops below 100%
+      setHasShownConfetti(false);
+    }
+  }, [projectProgress, hasShownConfetti, storeNodes.length, storeCables.length]);
 
 // Handle device tap in read mode (for status change)
 const handleDeviceTapInReadMode = useCallback((deviceId: string) => {
@@ -451,6 +484,68 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Confetti Cannon */}
+      <ConfettiCannon
+        ref={confettiRef}
+        count={250}
+        origin={{ x: 0, y: -20 }}
+        autoStart={false}
+        fadeOut={true}
+        fallSpeed={3000}
+        explosionSpeed={350}
+        colors={['#6D5DE7', '#A21FF9', '#FF6B9D', '#FFC700', '#00D9FF']}
+      />
+
+      {/* Progress Bar */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 100,
+          left: 20,
+          right: 20,
+          zIndex: 999,
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          borderRadius: 16,
+          padding: 16,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 3.84,
+          elevation: 5,
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>
+            {projectProgress === 100 ? '🎉 Project Complete!' : 'Project Progress'}
+          </Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#6D5DE7' }}>
+            {projectProgress}%
+          </Text>
+        </View>
+        
+        {/* Progress Bar */}
+        <View style={{ 
+          height: 10, 
+          backgroundColor: '#E5E7EB', 
+          borderRadius: 5, 
+          overflow: 'hidden' 
+        }}>
+          <View style={{ 
+            height: '100%', 
+            width: `${projectProgress}%`, 
+            backgroundColor: '#6D5DE7',
+            borderRadius: 5,
+          }} />
+        </View>
+        
+        <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 6 }}>
+          {projectProgress === 100 
+            ? '🌟 All items completed! Great work!' 
+            : `${storeNodes.filter(n => n.status === 'installed').length + storeCables.filter(c => c.status === 'installed').length} of ${storeNodes.length + storeCables.length} items completed`
+          }
+        </Text>
+      </View>
+
       {/* Back Button */}
       <View
         style={{

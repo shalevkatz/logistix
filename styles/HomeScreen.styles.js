@@ -112,4 +112,17 @@ deleteButtonText: {
   fontSize: 14,
 },
 
+// New project button styles
+newProjectBtn: {
+  backgroundColor: '#6D5DE7',
+  paddingHorizontal: 16,
+  paddingVertical: 8,
+  borderRadius: 10,
+},
+newProjectBtnText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 14,
+},
+
 });

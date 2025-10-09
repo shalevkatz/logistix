@@ -98,7 +98,7 @@ export default function HomeScreen() {
 
                 if (imagePaths.length > 0) {
                   const { error: storageError } = await supabase.storage
-                    .from('site-maps')
+                    .from('floor-plans') // Replace 'floor-plans' with your actual bucket name
                     .remove(imagePaths);
 
                   if (storageError) {
@@ -230,8 +230,8 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>
               {searchQuery ? `Results (${filteredProjects.length})` : 'Recent'}
             </Text>
-            <Pressable onPress={() => router.push('/create-project')}>
-              <Text style={styles.link}>+ New</Text>
+            <Pressable onPress={() => router.push('/create-project')} style={styles.newProjectBtn}>
+              <Text style={styles.newProjectBtnText}>+ New</Text>
             </Pressable>
           </View>
 

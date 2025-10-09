@@ -68,4 +68,48 @@ bigAddText: {
 },
 
 
+// Search styles
+searchContainer: {
+  paddingHorizontal: 0,
+  paddingVertical: 12,
+  backgroundColor: 'transparent',
+},
+searchInput: {
+  backgroundColor: '#f5f5f7',
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  fontSize: 16,
+  borderWidth: 0,
+},
+
+// Empty search result styles
+emptySearchWrap: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 40,
+  paddingTop: 60,
+},
+emptySearchText: {
+  fontSize: 16,
+  color: '#666',
+  textAlign: 'center',
+},
+
+// Delete button styles
+deleteButton: {
+  backgroundColor: '#ff3b30',
+  justifyContent: 'center',
+  alignItems: 'center',
+  width: 80,
+  borderRadius: 16,
+  marginLeft: 8,
+},
+deleteButtonText: {
+  color: '#fff',
+  fontWeight: '700',
+  fontSize: 14,
+},
+
 });

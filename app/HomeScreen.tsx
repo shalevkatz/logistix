@@ -20,6 +20,9 @@ export default function HomeScreen() {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Filter state for active/completed projects
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -34,18 +37,34 @@ export default function HomeScreen() {
 
   const { projects, loading, error, refetch } = useProjects(userId);
 
-  // Filter projects based on search query
+  // Filter projects based on search query and completed status
   const filteredProjects = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return projects;
+    // First filter by completed status
+    let filtered = projects.filter(p => showCompleted ? p.completed : !p.completed);
+    
+    // Then filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (project) =>
+          (project.title?.toLowerCase().includes(query) ?? false) ||
+          (project.description?.toLowerCase().includes(query) ?? false)
+      );
     }
-    const query = searchQuery.toLowerCase();
-    return projects.filter(
-      (project) =>
-        (project.title?.toLowerCase().includes(query) ?? false) ||
-        (project.description?.toLowerCase().includes(query) ?? false)
-    );
-  }, [projects, searchQuery]);
+    
+    return filtered;
+  }, [projects, searchQuery, showCompleted]);
+  
+  // Count active and completed projects
+  const activeProjectsCount = useMemo(() => 
+    projects.filter(p => !p.completed).length, 
+    [projects]
+  );
+  
+  const completedProjectsCount = useMemo(() => 
+    projects.filter(p => p.completed).length, 
+    [projects]
+  );
 
   useFocusEffect(
     React.useCallback(() => {
@@ -205,12 +224,33 @@ export default function HomeScreen() {
         <View style={{ flex: 1 }}>
           <View style={styles.summaryRow}>
             <View style={styles.card}>
-              <Text style={styles.cardNum}>{projects.length}</Text>
-              <Text style={styles.cardLabel}>Your Projects</Text>
+              <Text style={styles.cardNum}>{activeProjectsCount}</Text>
+              <Text style={styles.cardLabel}>Active Projects</Text>
             </View>
             <View style={styles.card}>
-              <Text style={styles.cardLabel}>Active</Text>
+              <Text style={styles.cardNum}>{completedProjectsCount}</Text>
+              <Text style={styles.cardLabel}>Completed</Text>
             </View>
+          </View>
+
+          {/* Toggle between Active and Completed */}
+          <View style={styles.toggleContainer}>
+            <Pressable 
+              onPress={() => setShowCompleted(false)}
+              style={[styles.toggleButton, !showCompleted && styles.toggleButtonActive]}
+            >
+              <Text style={[styles.toggleText, !showCompleted && styles.toggleTextActive]}>
+                Active
+              </Text>
+            </Pressable>
+            <Pressable 
+              onPress={() => setShowCompleted(true)}
+              style={[styles.toggleButton, showCompleted && styles.toggleButtonActive]}
+            >
+              <Text style={[styles.toggleText, showCompleted && styles.toggleTextActive]}>
+                Completed
+              </Text>
+            </Pressable>
           </View>
 
           {/* Search Bar */}
@@ -228,11 +268,18 @@ export default function HomeScreen() {
 
           <View style={styles.listHeaderRow}>
             <Text style={styles.sectionTitle}>
-              {searchQuery ? `Results (${filteredProjects.length})` : 'Recent'}
+              {searchQuery 
+                ? `Results (${filteredProjects.length})` 
+                : showCompleted 
+                  ? 'Completed Projects' 
+                  : 'Recent Projects'
+              }
             </Text>
-            <Pressable onPress={() => router.push('/create-project')} style={styles.newProjectBtn}>
-              <Text style={styles.newProjectBtnText}>+ New</Text>
-            </Pressable>
+            {!showCompleted && (
+              <Pressable onPress={() => router.push('/create-project')} style={styles.newProjectBtn}>
+                <Text style={styles.newProjectBtnText}>+ New</Text>
+              </Pressable>
+            )}
           </View>
 
           {filteredProjects.length === 0 ? (
@@ -252,9 +299,22 @@ export default function HomeScreen() {
                   renderLeftActions={() => renderLeftActions(item.id, item.title || 'Untitled')}
                   overshootLeft={false}
                 >
-                  <Pressable onPress={() => openProject(item.id)} style={styles.projectCard}>
-                    <Text style={styles.projectName}>{item.title}</Text>
-                    <Text numberOfLines={2} style={styles.projectDesc}>{item.description || 'No description'}</Text>
+                  <Pressable onPress={() => openProject(item.id)} style={[
+                    styles.projectCard,
+                    item.completed && styles.projectCardCompleted
+                  ]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={styles.projectName}>{item.title}</Text>
+                      {item.completed && <Text style={styles.completedBadge}>✓ Done</Text>}
+                    </View>
+                    <Text numberOfLines={2} style={styles.projectDesc}>
+                      {item.description || 'No description'}
+                    </Text>
+                    {item.completed && item.completed_at && (
+                      <Text style={styles.completedDate}>
+                        Completed: {new Date(item.completed_at).toLocaleDateString()}
+                      </Text>
+                    )}
                   </Pressable>
                 </Swipeable>
               )}

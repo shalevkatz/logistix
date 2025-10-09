@@ -42,6 +42,11 @@ export default function ProjectScreen() {
   const loadDevices = useSiteMapStore((s) => s.loadDevices);
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
   const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
+  
+  // Track project completion status
+  const [projectCompleted, setProjectCompleted] = useState(false);
+  const [hasPromptedCompletion, setHasPromptedCompletion] = useState(false);
+  const [projectStatusLoaded, setProjectStatusLoaded] = useState(false);
 
   // Confetti for completion
   const confettiRef = useRef<any>(null);
@@ -50,19 +55,59 @@ export default function ProjectScreen() {
   // Subscribe to store changes for progress calculation
   const storeNodes = useSiteMapStore((s) => s.nodes);
   const storeCables = useSiteMapStore((s) => s.cables);
+  
+  // Track total project progress (all floors)
+  const [totalProjectProgress, setTotalProjectProgress] = useState(0);
+  const [totalDevices, setTotalDevices] = useState(0);
+  const [totalCables, setTotalCables] = useState(0);
+  const [completedDevices, setCompletedDevices] = useState(0);
+  const [completedCables, setCompletedCables] = useState(0);
 
-  // Calculate project progress
-  const projectProgress = useMemo(() => {
-    const totalItems = storeNodes.length + storeCables.length;
+  // Calculate project progress across ALL floors
+  const calculateTotalProjectProgress = useCallback(async () => {
+    if (!projectId) return;
     
-    if (totalItems === 0) return 0;
-    
-    const completedDevices = storeNodes.filter(n => n.status === 'installed').length;
-    const completedCables = storeCables.filter(c => c.status === 'installed').length;
-    const completedItems = completedDevices + completedCables;
-    
-    return Math.round((completedItems / totalItems) * 100);
-  }, [storeNodes, storeCables]);
+    try {
+      // Get all devices for this project
+      const { data: allDevices } = await supabase
+        .from('devices')
+        .select('status')
+        .eq('project_id', projectId);
+      
+      // Get all cables for this project
+      const { data: allCables } = await supabase
+        .from('cables')
+        .select('status')
+        .eq('project_id', projectId);
+      
+      const totalDevicesCount = allDevices?.length || 0;
+      const totalCablesCount = allCables?.length || 0;
+      const totalItems = totalDevicesCount + totalCablesCount;
+      
+      if (totalItems === 0) {
+        setTotalProjectProgress(0);
+        setTotalDevices(0);
+        setTotalCables(0);
+        setCompletedDevices(0);
+        setCompletedCables(0);
+        return;
+      }
+      
+      const completedDevicesCount = allDevices?.filter(d => d.status === 'installed').length || 0;
+      const completedCablesCount = allCables?.filter(c => c.status === 'installed').length || 0;
+      const completedItems = completedDevicesCount + completedCablesCount;
+      
+      const progress = Math.round((completedItems / totalItems) * 100);
+      
+      setTotalProjectProgress(progress);
+      setTotalDevices(totalDevicesCount);
+      setTotalCables(totalCablesCount);
+      setCompletedDevices(completedDevicesCount);
+      setCompletedCables(completedCablesCount);
+    } catch (error) {
+      console.error('Error calculating project progress:', error);
+    }
+  }, [projectId]);
 
 const [cableStatusModalVisible, setCableStatusModalVisible] = useState(false);
 const [cableToEditStatus, setCableToEditStatus] = useState<string | null>(null);
@@ -79,14 +124,67 @@ const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null
 
   // Trigger confetti when project reaches 100%
   useEffect(() => {
-    if (projectProgress === 100 && !hasShownConfetti && storeNodes.length + storeCables.length > 0) {
+    // Don't do anything if project status hasn't loaded yet
+    if (!projectStatusLoaded) return;
+    
+    // Don't do anything if project is already marked as completed
+    if (projectCompleted) return;
+    
+    // Show confetti and prompt when reaching 100% for the first time
+    if (totalProjectProgress === 100 && !hasShownConfetti && (totalDevices + totalCables) > 0) {
       confettiRef.current?.start();
       setHasShownConfetti(true);
-    } else if (projectProgress < 100) {
-      // Reset confetti flag if progress drops below 100%
+      
+      // Prompt to mark as completed (only once)
+      if (!hasPromptedCompletion) {
+        setTimeout(() => {
+          Alert.alert(
+            '🎉 Project Complete!',
+            'Congratulations! All items have been installed. Would you like to mark this project as completed?',
+            [
+              {
+                text: 'Not Yet',
+                style: 'cancel',
+                onPress: () => setHasPromptedCompletion(true),
+              },
+              {
+                text: 'Mark as Completed',
+                style: 'default',
+                onPress: async () => {
+                  await markProjectAsCompleted();
+                  setHasPromptedCompletion(true);
+                },
+              },
+            ]
+          );
+        }, 1000);
+      }
+    } else if (totalProjectProgress < 100) {
+      // Reset flags only if progress drops below 100%
       setHasShownConfetti(false);
+      setHasPromptedCompletion(false);
     }
-  }, [projectProgress, hasShownConfetti, storeNodes.length, storeCables.length]);
+  }, [projectStatusLoaded, totalProjectProgress, hasShownConfetti, totalDevices, totalCables, projectCompleted, hasPromptedCompletion]);
+  
+  // Mark project as completed
+  const markProjectAsCompleted = async () => {
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({ completed: true })
+        .eq('id', projectId);
+      
+      if (error) {
+        console.error('❌ Failed to mark project as completed:', error);
+        Alert.alert('Error', 'Failed to mark project as completed');
+      } else {
+        setProjectCompleted(true);
+        Alert.alert('Success', 'Project marked as completed! You can find it in the Completed Projects section.');
+      }
+    } catch (err) {
+      console.error('❌ Error marking project as completed:', err);
+    }
+  };
 
 // Handle device tap in read mode (for status change)
 const handleDeviceTapInReadMode = useCallback((deviceId: string) => {
@@ -121,6 +219,8 @@ const handleStatusChange = useCallback(async (status: 'installed' | 'pending' | 
         Alert.alert('Error', 'Failed to update device status');
       } else {
         console.log('✅ Device status updated in database');
+        // Recalculate total project progress
+        await calculateTotalProjectProgress();
       }
     } catch (err) {
       console.error('❌ Error updating device status:', err);
@@ -128,7 +228,7 @@ const handleStatusChange = useCallback(async (status: 'installed' | 'pending' | 
   }
 
   setDeviceToEditStatus(null);
-}, [deviceToEditStatus]);
+}, [deviceToEditStatus, calculateTotalProjectProgress]);
 
 
 // Handle cable tap in read mode
@@ -164,6 +264,8 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         Alert.alert('Error', 'Failed to update cable status');
       } else {
         console.log('✅ Cable status updated in database');
+        // Recalculate total project progress
+        await calculateTotalProjectProgress();
       }
     } catch (err) {
       console.error('❌ Error updating cable status:', err);
@@ -171,7 +273,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
   }
 
   setCableToEditStatus(null);
-}, [cableToEditStatus]);
+}, [cableToEditStatus, calculateTotalProjectProgress]);
 
   // Load all floors from database
   const loadAllFloors = useCallback(async () => {
@@ -250,7 +352,10 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     if (storeSetFloorImage) {
       storeSetFloorImage(floor.id, toPublicUrl(floor.image_path));
     }
-  }, [loadFloorData]);
+    
+    // Recalculate total project progress when switching floors
+    await calculateTotalProjectProgress();
+  }, [loadFloorData, calculateTotalProjectProgress]);
 
   // Initialize FloorManager with database floors when opening
   const handleOpenFloorManager = useCallback(() => {
@@ -308,7 +413,9 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     const { nodes, cables } = await loadFloorData(floorId);
     loadDevices(nodes);
     useSiteMapStore.setState({ cables });
-  }, [floorId, loadFloorData, loadDevices]);
+    // Recalculate total project progress
+    await calculateTotalProjectProgress();
+  }, [floorId, loadFloorData, loadDevices, calculateTotalProjectProgress]);
 
   // Save function
   const saveCableChanges = useCallback(async () => {
@@ -394,11 +501,14 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       console.log('✅ All changes saved!');
       await reloadProjectData();
       
+      // Recalculate total project progress after saving
+      await calculateTotalProjectProgress();
+      
     } catch (error) {
       console.error('❌ Error saving:', error);
       Alert.alert('Error', 'Failed to save changes');
     }
-  }, [floorId, projectId, reloadProjectData, deletedCableIds, deletedDeviceIds]);
+  }, [floorId, projectId, reloadProjectData, deletedCableIds, deletedDeviceIds, calculateTotalProjectProgress]);
 
   // Delete function
   const handleDelete = useCallback(async () => {
@@ -455,6 +565,18 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     (async () => {
       setLoading(true);
       
+      // Load project completion status
+      const { data: projectData } = await supabase
+        .from('projects')
+        .select('completed')
+        .eq('id', projectId)
+        .single();
+      
+      if (projectData) {
+        setProjectCompleted(projectData.completed ?? false);
+      }
+      setProjectStatusLoaded(true); // Mark that we've loaded the status
+      
       const floors = await loadAllFloors();
       setDbFloors(floors);
       
@@ -468,9 +590,12 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       const firstFloor = floors[0];
       await switchToFloor(firstFloor);
       
+      // Calculate initial total project progress
+      await calculateTotalProjectProgress();
+      
       setLoading(false);
     })();
-  }, [projectId, loadAllFloors, switchToFloor]);
+  }, [projectId, loadAllFloors, switchToFloor, calculateTotalProjectProgress]);
 
   const bustedUrl = React.useMemo(() => {
     if (!imageUrl) return null;
@@ -516,10 +641,10 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>
-            {projectProgress === 100 ? '🎉 Project Complete!' : 'Project Progress'}
+            {projectCompleted ? '✅ Project Completed' : totalProjectProgress === 100 ? '🎉 Project Complete!' : 'Project Progress'}
           </Text>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: '#6D5DE7' }}>
-            {projectProgress}%
+          <Text style={{ fontSize: 16, fontWeight: '700', color: projectCompleted ? '#22c55e' : '#6D5DE7' }}>
+            {totalProjectProgress}%
           </Text>
         </View>
         
@@ -532,16 +657,18 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         }}>
           <View style={{ 
             height: '100%', 
-            width: `${projectProgress}%`, 
-            backgroundColor: '#6D5DE7',
+            width: `${totalProjectProgress}%`, 
+            backgroundColor: projectCompleted ? '#22c55e' : '#6D5DE7',
             borderRadius: 5,
           }} />
         </View>
         
         <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 6 }}>
-          {projectProgress === 100 
-            ? '🌟 All items completed! Great work!' 
-            : `${storeNodes.filter(n => n.status === 'installed').length + storeCables.filter(c => c.status === 'installed').length} of ${storeNodes.length + storeCables.length} items completed`
+          {projectCompleted
+            ? '✓ This project has been marked as completed'
+            : totalProjectProgress === 100 
+              ? '🌟 All items completed! Great work!' 
+              : `${completedDevices + completedCables} of ${totalDevices + totalCables} items completed (all floors)`
           }
         </Text>
       </View>

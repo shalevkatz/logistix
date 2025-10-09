@@ -125,4 +125,60 @@ newProjectBtnText: {
   fontSize: 14,
 },
 
+// Toggle styles
+toggleContainer: {
+  flexDirection: 'row',
+  backgroundColor: '#f5f5f7',
+  borderRadius: 12,
+  padding: 4,
+  marginTop: 12,
+  gap: 4,
+},
+toggleButton: {
+  flex: 1,
+  paddingVertical: 8,
+  paddingHorizontal: 16,
+  borderRadius: 8,
+  alignItems: 'center',
+},
+toggleButtonActive: {
+  backgroundColor: '#fff',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.1,
+  shadowRadius: 2,
+  elevation: 2,
+},
+toggleText: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#666',
+},
+toggleTextActive: {
+  color: '#6D5DE7',
+  fontWeight: '700',
+},
+
+// Completed project card styles
+projectCardCompleted: {
+  backgroundColor: '#f0fdf4',
+  borderLeftWidth: 4,
+  borderLeftColor: '#22c55e',
+},
+completedBadge: {
+  fontSize: 12,
+  fontWeight: '700',
+  color: '#22c55e',
+  backgroundColor: '#dcfce7',
+  paddingHorizontal: 8,
+  paddingVertical: 4,
+  borderRadius: 8,
+},
+completedDate: {
+  fontSize: 11,
+  color: '#16a34a',
+  marginTop: 6,
+  fontWeight: '600',
+},
+
 });

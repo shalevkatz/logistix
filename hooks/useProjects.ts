@@ -5,21 +5,25 @@ import { supabase } from '../lib/supabase';
 export type Project = {
   id: string;
   owner_id: string;
-  title: string | null;                    // נשתמש תמיד ב-title בקוד
+  title: string | null;
   description: string | null;
   priority: 'Low' | 'Medium' | 'High' | null;
   created_at: string;
   updated_at: string;
+  completed: boolean;
+  completed_at: string | null;
 };
 
 type Row = {
   id: string;
   owner_id: string;
-  title?: string | null;                 
+  title?: string | null;
   description: string | null;
   priority: 'Low' | 'Medium' | 'High' | null;
   created_at: string;
   updated_at: string;
+  completed: boolean;
+  completed_at: string | null;
 };
 
 export function useProjects(userId?: string) {
@@ -40,8 +44,7 @@ export function useProjects(userId?: string) {
 
       const { data, error } = await supabase
         .from('projects')
-        // נבקש גם title וגם name כדי לתמוך בשתי הסכמות
-        .select('id, owner_id, title, description, priority, created_at, updated_at')
+        .select('id, owner_id, title, description, priority, created_at, updated_at, completed, completed_at')
         .eq('owner_id', userId)
         .order('created_at', { ascending: false });
 
@@ -55,6 +58,8 @@ export function useProjects(userId?: string) {
         priority: r.priority ?? null,
         created_at: r.created_at,
         updated_at: r.updated_at,
+        completed: r.completed ?? false,
+        completed_at: r.completed_at ?? null,
       }));
 
       safeSet(setProjects, mapped);

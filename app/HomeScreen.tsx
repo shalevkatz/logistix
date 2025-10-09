@@ -1,11 +1,12 @@
 // app/HomeScreen.tsx
 import { Href, useFocusEffect, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Linking, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfile } from '../hooks/useProfile';
 import { useProjects } from '../hooks/useProjects';
+import { getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel, ServiceCallStatus, useServiceCalls } from '../hooks/useServiceCalls';
 import { supabase } from '../lib/supabase';
 import { styles } from '../styles/HomeScreen.styles';
 
@@ -23,6 +24,9 @@ export default function HomeScreen() {
   
   // Filter state for active/completed projects
   const [showCompleted, setShowCompleted] = useState(false);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'projects' | 'service-calls'>('projects');
 
   useEffect(() => {
     let mounted = true;
@@ -36,6 +40,12 @@ export default function HomeScreen() {
   }, []);
 
   const { projects, loading, error, refetch } = useProjects(userId);
+  
+  // Service calls data
+  const { serviceCalls, loading: serviceCallsLoading, error: serviceCallsError, refetch: refetchServiceCalls } = useServiceCalls(userId);
+  
+  // Service calls filter state
+  const [serviceCallStatusFilter, setServiceCallStatusFilter] = useState<ServiceCallStatus | 'all'>('all');
 
   // Filter projects based on search query and completed status
   const filteredProjects = useMemo(() => {
@@ -65,23 +75,131 @@ export default function HomeScreen() {
     projects.filter(p => p.completed).length, 
     [projects]
   );
+  
+  // Filter service calls
+  const filteredServiceCalls = useMemo(() => {
+    let filtered = serviceCalls;
+
+    // Filter by status
+    if (serviceCallStatusFilter !== 'all') {
+      filtered = filtered.filter(call => call.status === serviceCallStatusFilter);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        call =>
+          call.title.toLowerCase().includes(query) ||
+          call.customer_name.toLowerCase().includes(query) ||
+          (call.description?.toLowerCase().includes(query) ?? false) ||
+          (call.customer_address?.toLowerCase().includes(query) ?? false)
+      );
+    }
+
+    return filtered;
+  }, [serviceCalls, searchQuery, serviceCallStatusFilter]);
+  
+  // Count service calls by status
+  const serviceCallStatusCounts = useMemo(() => ({
+    open: serviceCalls.filter(c => c.status === 'open').length,
+    in_progress: serviceCalls.filter(c => c.status === 'in_progress').length,
+    completed: serviceCalls.filter(c => c.status === 'completed').length,
+  }), [serviceCalls]);
 
   useFocusEffect(
     React.useCallback(() => {
       refetch();
-    }, [refetch])
+      refetchServiceCalls();
+    }, [refetch, refetchServiceCalls])
   );
 
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    if (activeTab === 'projects') {
+      await refetch();
+    } else {
+      await refetchServiceCalls();
+    }
     setRefreshing(false);
+  };
+  
+  const handleCallCustomer = (phone: string | null) => {
+    if (phone) {
+      Linking.openURL(`tel:${phone}`);
+    }
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
+  };
+
+  // Delete service call
+  const deleteServiceCall = async (callId: string, callTitle: string) => {
+    Alert.alert(
+      'Delete Service Call',
+      `Are you sure you want to delete "${callTitle}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('service_calls')
+                .delete()
+                .eq('id', callId);
+
+              if (error) {
+                Alert.alert('Error', 'Failed to delete service call: ' + error.message);
+              } else {
+                await refetchServiceCalls();
+              }
+            } catch (err) {
+              Alert.alert('Error', 'An unexpected error occurred while deleting.');
+              console.error('Delete service call error:', err);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Mark service call as complete
+  const completeServiceCall = async (callId: string, callTitle: string) => {
+    Alert.alert(
+      'Complete Service Call',
+      `Mark "${callTitle}" as completed?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('service_calls')
+                .update({ 
+                  status: 'completed',
+                  completed_at: new Date().toISOString()
+                })
+                .eq('id', callId);
+
+              if (error) {
+                Alert.alert('Error', 'Failed to update service call: ' + error.message);
+              } else {
+                await refetchServiceCalls();
+              }
+            } catch (err) {
+              Alert.alert('Error', 'An unexpected error occurred.');
+              console.error('Complete service call error:', err);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Delete project
@@ -161,6 +279,32 @@ export default function HomeScreen() {
     );
   };
 
+  // Render left swipe actions for service calls (delete button)
+  const renderServiceCallLeftActions = (callId: string, callTitle: string) => {
+    return (
+      <Pressable
+        style={styles.deleteButton}
+        onPress={() => deleteServiceCall(callId, callTitle)}
+      >
+        <Text style={styles.deleteButtonText}>Delete</Text>
+      </Pressable>
+    );
+  };
+
+  // Render right swipe actions for service calls (complete button)
+  const renderServiceCallRightActions = (callId: string, callTitle: string, status: ServiceCallStatus) => {
+    if (status === 'completed') return null; // Don't show complete action if already completed
+    
+    return (
+      <Pressable
+        style={styles.completeButton}
+        onPress={() => completeServiceCall(callId, callTitle)}
+      >
+        <Text style={styles.completeButtonText}>✓ Complete</Text>
+      </Pressable>
+    );
+  };
+
   // ✅ Open the full project page (fetches details by id)
   const openProject = async (id: string) => {
     const { data, error } = await supabase
@@ -200,128 +344,293 @@ export default function HomeScreen() {
       </View>
 
       {/* Error / Empty / List */}
-      {error ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>Couldn't load projects: {error}</Text>
-          <Pressable onPress={refetch} style={[styles.primaryBtn, { marginTop: 12 }]}>
-            <Text style={styles.primaryBtnText}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : projects.length === 0 ? (
-        // Empty state
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>Let's start your first project</Text>
-          <Text style={styles.emptySubtitle}>
-            Create a project to track tasks, hours, and reports.
-          </Text>
-
-          <Pressable onPress={() => router.push('/create-project')} style={styles.bigAddCircle}>
-            <Text style={styles.bigAddText}>+</Text>
-          </Pressable>
-        </View>
-      ) : (
-        // Projects list
-        <View style={{ flex: 1 }}>
-          <View style={styles.summaryRow}>
-            <View style={styles.card}>
-              <Text style={styles.cardNum}>{activeProjectsCount}</Text>
-              <Text style={styles.cardLabel}>Active Projects</Text>
-            </View>
-            <View style={styles.card}>
-              <Text style={styles.cardNum}>{completedProjectsCount}</Text>
-              <Text style={styles.cardLabel}>Completed</Text>
-            </View>
-          </View>
-
-          {/* Toggle between Active and Completed */}
-          <View style={styles.toggleContainer}>
-            <Pressable 
-              onPress={() => setShowCompleted(false)}
-              style={[styles.toggleButton, !showCompleted && styles.toggleButtonActive]}
-            >
-              <Text style={[styles.toggleText, !showCompleted && styles.toggleTextActive]}>
-                Active
-              </Text>
-            </Pressable>
-            <Pressable 
-              onPress={() => setShowCompleted(true)}
-              style={[styles.toggleButton, showCompleted && styles.toggleButtonActive]}
-            >
-              <Text style={[styles.toggleText, showCompleted && styles.toggleTextActive]}>
-                Completed
-              </Text>
+      {activeTab === 'projects' ? (
+        // PROJECTS TAB
+        error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Couldn't load projects: {error}</Text>
+            <Pressable onPress={refetch} style={[styles.primaryBtn, { marginTop: 12 }]}>
+              <Text style={styles.primaryBtnText}>Retry</Text>
             </Pressable>
           </View>
-
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search projects..."
-              placeholderTextColor="#999"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.listHeaderRow}>
-            <Text style={styles.sectionTitle}>
-              {searchQuery 
-                ? `Results (${filteredProjects.length})` 
-                : showCompleted 
-                  ? 'Completed Projects' 
-                  : 'Recent Projects'
-              }
+        ) : projects.length === 0 ? (
+          // Empty state
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>Let's start your first project</Text>
+            <Text style={styles.emptySubtitle}>
+              Create a project to track tasks, hours, and reports.
             </Text>
-            {!showCompleted && (
-              <Pressable onPress={() => router.push('/create-project')} style={styles.newProjectBtn}>
-                <Text style={styles.newProjectBtnText}>+ New</Text>
+
+            <Pressable onPress={() => router.push('/create-project')} style={styles.bigAddCircle}>
+              <Text style={styles.bigAddText}>+</Text>
+            </Pressable>
+          </View>
+        ) : (
+          // Projects list
+          <View style={{ flex: 1 }}>
+            <View style={styles.summaryRow}>
+              <View style={styles.card}>
+                <Text style={styles.cardNum}>{activeProjectsCount}</Text>
+                <Text style={styles.cardLabel}>Active Projects</Text>
+              </View>
+              <View style={styles.card}>
+                <Text style={styles.cardNum}>{completedProjectsCount}</Text>
+                <Text style={styles.cardLabel}>Completed</Text>
+              </View>
+            </View>
+
+            {/* Toggle between Active and Completed */}
+            <View style={styles.toggleContainer}>
+              <Pressable 
+                onPress={() => setShowCompleted(false)}
+                style={[styles.toggleButton, !showCompleted && styles.toggleButtonActive]}
+              >
+                <Text style={[styles.toggleText, !showCompleted && styles.toggleTextActive]}>
+                  Active
+                </Text>
               </Pressable>
+              <Pressable 
+                onPress={() => setShowCompleted(true)}
+                style={[styles.toggleButton, showCompleted && styles.toggleButtonActive]}
+              >
+                <Text style={[styles.toggleText, showCompleted && styles.toggleTextActive]}>
+                  Completed
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search projects..."
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.listHeaderRow}>
+              <Text style={styles.sectionTitle}>
+                {searchQuery 
+                  ? `Results (${filteredProjects.length})` 
+                  : showCompleted 
+                    ? 'Completed Projects' 
+                    : 'Recent Projects'
+                }
+              </Text>
+              {!showCompleted && (
+                <Pressable onPress={() => router.push('/create-project')} style={styles.newProjectBtn}>
+                  <Text style={styles.newProjectBtnText}>+ New</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {filteredProjects.length === 0 ? (
+              <View style={styles.emptySearchWrap}>
+                <Text style={styles.emptySearchText}>
+                  No projects found for "{searchQuery}"
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredProjects}
+                keyExtractor={(item) => item.id}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                contentContainerStyle={{ gap: 12, paddingBottom: 100 }}
+                renderItem={({ item }) => (
+                  <Swipeable
+                    renderLeftActions={() => renderLeftActions(item.id, item.title || 'Untitled')}
+                    overshootLeft={false}
+                  >
+                    <Pressable onPress={() => openProject(item.id)} style={[
+                      styles.projectCard,
+                      item.completed && styles.projectCardCompleted
+                    ]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={styles.projectName}>{item.title}</Text>
+                        {item.completed && <Text style={styles.completedBadge}>✓ Done</Text>}
+                      </View>
+                      <Text numberOfLines={2} style={styles.projectDesc}>
+                        {item.description || 'No description'}
+                      </Text>
+                      {item.completed && item.completed_at && (
+                        <Text style={styles.completedDate}>
+                          Completed: {new Date(item.completed_at).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </Swipeable>
+                )}
+              />
             )}
           </View>
-
-          {filteredProjects.length === 0 ? (
-            <View style={styles.emptySearchWrap}>
-              <Text style={styles.emptySearchText}>
-                No projects found for "{searchQuery}"
-              </Text>
+        )
+      ) : (
+        // SERVICE CALLS TAB
+        serviceCallsError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Couldn't load service calls: {serviceCallsError}</Text>
+            <Pressable onPress={refetchServiceCalls} style={[styles.primaryBtn, { marginTop: 12 }]}>
+              <Text style={styles.primaryBtnText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : serviceCalls.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>No service calls yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Create your first service call to track maintenance and support requests.
+            </Text>
+            <Pressable onPress={() => router.push('/create-service-call')} style={styles.bigAddCircle}>
+              <Text style={styles.bigAddText}>+</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            {/* Service Calls Summary */}
+            <View style={styles.summaryRow}>
+              <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
+                <Text style={styles.cardNum}>{serviceCallStatusCounts.open}</Text>
+                <Text style={styles.cardLabel}>Open</Text>
+              </View>
+              <View style={[styles.card, { backgroundColor: '#FEF3C7' }]}>
+                <Text style={styles.cardNum}>{serviceCallStatusCounts.in_progress}</Text>
+                <Text style={styles.cardLabel}>In Progress</Text>
+              </View>
+              <View style={[styles.card, { backgroundColor: '#D1FAE5' }]}>
+                <Text style={styles.cardNum}>{serviceCallStatusCounts.completed}</Text>
+                <Text style={styles.cardLabel}>Completed</Text>
+              </View>
             </View>
-          ) : (
-            <FlatList
-              data={filteredProjects}
-              keyExtractor={(item) => item.id}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-              contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
-              renderItem={({ item }) => (
-                <Swipeable
-                  renderLeftActions={() => renderLeftActions(item.id, item.title || 'Untitled')}
-                  overshootLeft={false}
+
+            {/* Status Filter */}
+            <View style={styles.serviceCallFilterTabs}>
+              {(['all', 'open', 'in_progress', 'completed'] as const).map(status => (
+                <Pressable
+                  key={status}
+                  onPress={() => setServiceCallStatusFilter(status)}
+                  style={[styles.serviceCallFilterTab, serviceCallStatusFilter === status && styles.serviceCallFilterTabActive]}
                 >
-                  <Pressable onPress={() => openProject(item.id)} style={[
-                    styles.projectCard,
-                    item.completed && styles.projectCardCompleted
-                  ]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text style={styles.projectName}>{item.title}</Text>
-                      {item.completed && <Text style={styles.completedBadge}>✓ Done</Text>}
-                    </View>
-                    <Text numberOfLines={2} style={styles.projectDesc}>
-                      {item.description || 'No description'}
-                    </Text>
-                    {item.completed && item.completed_at && (
-                      <Text style={styles.completedDate}>
-                        Completed: {new Date(item.completed_at).toLocaleDateString()}
-                      </Text>
-                    )}
-                  </Pressable>
-                </Swipeable>
-              )}
-            />
-          )}
-        </View>
+                  <Text style={[styles.serviceCallFilterTabText, serviceCallStatusFilter === status && styles.serviceCallFilterTabTextActive]}>
+                    {status === 'all' ? 'All' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search service calls..."
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.listHeaderRow}>
+              <Text style={styles.sectionTitle}>
+                {searchQuery ? `Results (${filteredServiceCalls.length})` : 'Service Calls'}
+              </Text>
+              <Pressable onPress={() => router.push('/create-service-call')} style={styles.newProjectBtn}>
+                <Text style={styles.newProjectBtnText}>+ New</Text>
+              </Pressable>
+            </View>
+
+            {filteredServiceCalls.length === 0 ? (
+              <View style={styles.emptySearchWrap}>
+                <Text style={styles.emptySearchText}>
+                  No service calls found {searchQuery && `for "${searchQuery}"`}
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredServiceCalls}
+                keyExtractor={item => item.id}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                contentContainerStyle={{ gap: 12, paddingBottom: 100 }}
+                renderItem={({ item }) => (
+                  <Swipeable
+                    renderLeftActions={() => renderServiceCallLeftActions(item.id, item.title)}
+                    renderRightActions={() => renderServiceCallRightActions(item.id, item.title, item.status)}
+                    overshootLeft={false}
+                    overshootRight={false}
+                  >
+                    <Pressable
+                      onPress={() => router.push(`/service-calls/${item.id}`)}
+                      style={[styles.serviceCallCard, { borderLeftColor: getStatusColor(item.status) }]}
+                    >
+                      <View style={styles.serviceCallCardHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.serviceCallTitle}>{item.title}</Text>
+                          <Text style={styles.serviceCallCustomer}>{item.customer_name}</Text>
+                        </View>
+                        <View style={[styles.serviceCallPriorityBadge, { backgroundColor: getPriorityColor(item.priority) }]}>
+                          <Text style={styles.serviceCallPriorityText}>{getPriorityLabel(item.priority)}</Text>
+                        </View>
+                      </View>
+
+                      {item.customer_address && (
+                        <Text style={styles.serviceCallAddress} numberOfLines={1}>📍 {item.customer_address}</Text>
+                      )}
+
+                      {item.scheduled_date && (
+                        <Text style={styles.serviceCallScheduled}>
+                          📅 {new Date(item.scheduled_date).toLocaleDateString()}
+                        </Text>
+                      )}
+
+                      <View style={styles.serviceCallCardFooter}>
+                        <View style={[styles.serviceCallStatusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+                          <Text style={styles.serviceCallStatusText}>{getStatusLabel(item.status)}</Text>
+                        </View>
+                        {item.customer_phone && (
+                          <Pressable
+                            onPress={() => handleCallCustomer(item.customer_phone)}
+                            style={styles.serviceCallCallButton}
+                          >
+                            <Text style={styles.serviceCallCallButtonText}>📞 Call</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    </Pressable>
+                  </Swipeable>
+                )}
+              />
+            )}
+          </View>
+        )
       )}
+
+      {/* Bottom Tab Bar */}
+      <View style={styles.bottomTabBar}>
+        <Pressable
+          onPress={() => {
+            setActiveTab('projects');
+            setSearchQuery('');
+          }}
+          style={[styles.tabButton, activeTab === 'projects' && styles.tabButtonActive]}
+        >
+          <Text style={[styles.tabIcon, activeTab === 'projects' && styles.tabIconActive]}>📁</Text>
+          <Text style={[styles.tabLabel, activeTab === 'projects' && styles.tabLabelActive]}>Projects</Text>
+        </Pressable>
+        
+        <Pressable
+          onPress={() => {
+            setActiveTab('service-calls');
+            setSearchQuery('');
+          }}
+          style={[styles.tabButton, activeTab === 'service-calls' && styles.tabButtonActive]}
+        >
+          <Text style={[styles.tabIcon, activeTab === 'service-calls' && styles.tabIconActive]}>📞</Text>
+          <Text style={[styles.tabLabel, activeTab === 'service-calls' && styles.tabLabelActive]}>Service Calls</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }

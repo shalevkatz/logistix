@@ -1,184 +1,403 @@
-// styles/HomeScreen.styles.js
+// styles/HomeScreen.styles.ts
 import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 16, gap: 16 },
-  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+    gap: 16,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-  // header
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
-  eyebrow: { fontSize: 12, opacity: 0.6 },
-  title: { fontSize: 22, fontWeight: '700' },
-  signOutBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#eee' },
-  signOutText: { fontWeight: '600' },
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  eyebrow: {
+    fontSize: 14,
+    opacity: 0.6,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  signOutBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  signOutText: {
+    fontWeight: '600',
+    fontSize: 14,
+  },
 
-  // error box
-  errorBox: { padding: 16, borderRadius: 12, backgroundColor: '#fff3f2' },
-  errorText: { color: '#b42318' },
+  // Error box
+  errorBox: {
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#fff3f2',
+  },
+  errorText: {
+    color: '#b42318',
+    marginBottom: 12,
+  },
+  primaryBtn: {
+    backgroundColor: '#6D5DE7',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  primaryBtnText: {
+    color: 'white',
+    fontWeight: '700',
+  },
 
-  // empty state
-emptyWrap: {
-  flex: 1,
-  alignItems: 'center',
-  justifyContent: 'center',   // 👈 centers vertically
-  paddingHorizontal: 24,
-},
-  emptyTitle: { fontSize: 20, fontWeight: '800' },
-  emptySubtitle: { textAlign: 'center', marginTop: 6, opacity: 0.7 },
+  // Empty state
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  emptySubtitle: {
+    textAlign: 'center',
+    marginTop: 6,
+    opacity: 0.7,
+  },
+  bigAddCircle: {
+    marginTop: 32,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#6D5DE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigAddText: {
+    color: 'white',
+    fontSize: 48,
+    fontWeight: '800',
+  },
 
-  // projects summary
-  summaryRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  card: { flex: 1, borderRadius: 16, padding: 16, backgroundColor: '#f5f5f7' },
-  cardNum: { fontSize: 26, fontWeight: '800' },
-  cardLabel: { marginTop: 4, opacity: 0.7 },
+  // Summary cards
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  card: {
+    flex: 1,
+    backgroundColor: '#f5f5f7',
+    borderRadius: 16,
+    padding: 16,
+  },
+  cardNum: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  cardLabel: {
+    marginTop: 4,
+    opacity: 0.8,
+    fontSize: 12,
+  },
 
-  // list header
-  listHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
-  sectionTitle: { fontWeight: '700', fontSize: 16 },
-  link: { fontWeight: '700', opacity: 0.9 },
+  // Toggle
+  toggleContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f5f5f7',
+    alignItems: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#6D5DE7',
+  },
+  toggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  toggleTextActive: {
+    color: '#fff',
+  },
 
-  // project card
-  projectCard: { padding: 16, backgroundColor: '#f7f7ff', borderRadius: 16 },
-  projectName: { fontSize: 16, fontWeight: '700' },
-  projectDesc: { marginTop: 6 },
-  badgeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  badgeText: { fontSize: 10, fontWeight: '800' },
-  badgeActive: { backgroundColor: '#E8EEFF' },
-  badgeMuted: { backgroundColor: '#EEE' },
+  // Search bar
+  searchContainer: {
+    paddingVertical: 12,
+  },
+  searchInput: {
+    backgroundColor: '#f5f5f7',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
 
-  // buttons
-  primaryBtn: { backgroundColor: '#6D5DE7', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
-  primaryBtnText: { color: 'white', fontWeight: '700' },
+  // List header
+  listHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  newProjectBtn: {
+    backgroundColor: '#6D5DE7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  newProjectBtnText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 14,
+  },
 
-bigAddCircle: {
-  marginTop: 32,
-  width: 100,
-  height: 100,
-  borderRadius: 50,            // circle
-  backgroundColor: '#6D5DE7',  // purple
-  alignItems: 'center',
-  justifyContent: 'center',
-},
+  // Project card
+  projectCard: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6D5DE7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  projectCardCompleted: {
+    backgroundColor: '#f9fafb',
+    borderLeftColor: '#10B981',
+    opacity: 0.8,
+  },
+  projectName: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+  },
+  projectDesc: {
+    marginTop: 4,
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  completedBadge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10B981',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  completedDate: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
+  },
 
-bigAddText: {
-  color: 'white',
-  fontSize: 48,   // smaller than before
-  fontWeight: '800',
-},
+  // Empty search
+  emptySearchWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  emptySearchText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
 
+  // Swipe actions
+  deleteButton: {
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+    borderRadius: 16,
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  completeButton: {
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    height: '100%',
+    borderRadius: 16,
+  },
+  completeButtonText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: 14,
+  },
 
-// Search styles
-searchContainer: {
-  paddingHorizontal: 0,
-  paddingVertical: 12,
-  backgroundColor: 'transparent',
-},
-searchInput: {
-  backgroundColor: '#f5f5f7',
-  borderRadius: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 12,
-  fontSize: 16,
-  borderWidth: 0,
-},
+  // Service Call Filter Tabs
+  serviceCallFilterTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  serviceCallFilterTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f5f5f7',
+    alignItems: 'center',
+  },
+  serviceCallFilterTabActive: {
+    backgroundColor: '#6D5DE7',
+  },
+  serviceCallFilterTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  serviceCallFilterTabTextActive: {
+    color: '#fff',
+  },
 
-// Empty search result styles
-emptySearchWrap: {
-  flex: 1,
-  justifyContent: 'center',
-  alignItems: 'center',
-  paddingHorizontal: 40,
-  paddingTop: 60,
-},
-emptySearchText: {
-  fontSize: 16,
-  color: '#666',
-  textAlign: 'center',
-},
+  // Service Call Card
+  serviceCallCard: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  serviceCallCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
+  },
+  serviceCallTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  serviceCallCustomer: {
+    fontSize: 14,
+    color: '#666',
+  },
+  serviceCallPriorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  serviceCallPriorityText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  serviceCallAddress: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
+  },
+  serviceCallScheduled: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
+  },
+  serviceCallCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  serviceCallStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  serviceCallStatusText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  serviceCallCallButton: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  serviceCallCallButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 
-// Delete button styles
-deleteButton: {
-  backgroundColor: '#ff3b30',
-  justifyContent: 'center',
-  alignItems: 'center',
-  width: 80,
-  borderRadius: 16,
-  marginLeft: 8,
-},
-deleteButtonText: {
-  color: '#fff',
-  fontWeight: '700',
-  fontSize: 14,
-},
-
-// New project button styles
-newProjectBtn: {
-  backgroundColor: '#6D5DE7',
-  paddingHorizontal: 16,
-  paddingVertical: 8,
-  borderRadius: 10,
-},
-newProjectBtnText: {
-  color: '#fff',
-  fontWeight: '700',
-  fontSize: 14,
-},
-
-// Toggle styles
-toggleContainer: {
-  flexDirection: 'row',
-  backgroundColor: '#f5f5f7',
-  borderRadius: 12,
-  padding: 4,
-  marginTop: 12,
-  gap: 4,
-},
-toggleButton: {
-  flex: 1,
-  paddingVertical: 8,
-  paddingHorizontal: 16,
-  borderRadius: 8,
-  alignItems: 'center',
-},
-toggleButtonActive: {
-  backgroundColor: '#fff',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.1,
-  shadowRadius: 2,
-  elevation: 2,
-},
-toggleText: {
-  fontSize: 14,
-  fontWeight: '600',
-  color: '#666',
-},
-toggleTextActive: {
-  color: '#6D5DE7',
-  fontWeight: '700',
-},
-
-// Completed project card styles
-projectCardCompleted: {
-  backgroundColor: '#f0fdf4',
-  borderLeftWidth: 4,
-  borderLeftColor: '#22c55e',
-},
-completedBadge: {
-  fontSize: 12,
-  fontWeight: '700',
-  color: '#22c55e',
-  backgroundColor: '#dcfce7',
-  paddingHorizontal: 8,
-  paddingVertical: 4,
-  borderRadius: 8,
-},
-completedDate: {
-  fontSize: 11,
-  color: '#16a34a',
-  marginTop: 6,
-  fontWeight: '600',
-},
-
+  // Bottom Tab Bar
+  bottomTabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  tabButtonActive: {
+    backgroundColor: '#f3f4f6',
+  },
+  tabIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  tabIconActive: {
+    fontSize: 24,
+  },
+  tabLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  tabLabelActive: {
+    color: '#6D5DE7',
+  },
 });

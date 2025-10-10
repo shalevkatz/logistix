@@ -11,7 +11,7 @@ export default function ServiceCallsScreen() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ServiceCallStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<'active' | ServiceCallStatus>('active');
 
   useEffect(() => {
     let mounted = true;
@@ -29,7 +29,10 @@ export default function ServiceCallsScreen() {
     let filtered = serviceCalls;
 
     // Filter by status
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'active') {
+      // Show only open and in_progress (exclude completed)
+      filtered = filtered.filter(call => call.status === 'open' || call.status === 'in_progress');
+    } else {
       filtered = filtered.filter(call => call.status === statusFilter);
     }
 
@@ -50,6 +53,7 @@ export default function ServiceCallsScreen() {
 
   // Count by status
   const statusCounts = useMemo(() => ({
+    active: serviceCalls.filter(c => c.status === 'open' || c.status === 'in_progress').length,
     open: serviceCalls.filter(c => c.status === 'open').length,
     in_progress: serviceCalls.filter(c => c.status === 'in_progress').length,
     completed: serviceCalls.filter(c => c.status === 'completed').length,
@@ -203,12 +207,8 @@ export default function ServiceCallsScreen() {
           {/* Summary Cards */}
           <View style={styles.summaryRow}>
             <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
-              <Text style={styles.cardNum}>{statusCounts.open}</Text>
-              <Text style={styles.cardLabel}>Open</Text>
-            </View>
-            <View style={[styles.card, { backgroundColor: '#FEF3C7' }]}>
-              <Text style={styles.cardNum}>{statusCounts.in_progress}</Text>
-              <Text style={styles.cardLabel}>In Progress</Text>
+              <Text style={styles.cardNum}>{statusCounts.active}</Text>
+              <Text style={styles.cardLabel}>Active Calls</Text>
             </View>
             <View style={[styles.card, { backgroundColor: '#D1FAE5' }]}>
               <Text style={styles.cardNum}>{statusCounts.completed}</Text>
@@ -218,14 +218,14 @@ export default function ServiceCallsScreen() {
 
           {/* Status Filter Tabs */}
           <View style={styles.filterTabs}>
-            {(['all', 'open', 'in_progress', 'completed'] as const).map(status => (
+            {(['active', 'open', 'in_progress', 'completed'] as const).map(status => (
               <Pressable
                 key={status}
                 onPress={() => setStatusFilter(status)}
                 style={[styles.filterTab, statusFilter === status && styles.filterTabActive]}
               >
                 <Text style={[styles.filterTabText, statusFilter === status && styles.filterTabTextActive]}>
-                  {status === 'all' ? 'All' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {status === 'active' ? 'Active' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </Text>
               </Pressable>
             ))}

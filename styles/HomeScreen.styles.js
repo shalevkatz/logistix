@@ -99,7 +99,7 @@ export const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: '#f5f5f7',
+    backgroundColor: '#EFF6FF',
     borderRadius: 16,
     padding: 16,
   },
@@ -189,26 +189,59 @@ export const styles = StyleSheet.create({
   projectCardCompleted: {
     backgroundColor: '#f9fafb',
     borderLeftColor: '#10B981',
-    opacity: 0.8,
+    opacity: 0.9,
+  },
+  projectCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
   },
   projectName: {
     fontSize: 16,
     fontWeight: '700',
-    flex: 1,
+    marginBottom: 4,
+  },
+  projectClient: {
+    fontSize: 14,
+    color: '#666',
+  },
+  projectLocation: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
+  },
+  projectDate: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
   },
   projectDesc: {
-    marginTop: 4,
+    marginTop: 8,
     fontSize: 14,
     opacity: 0.7,
+    lineHeight: 20,
+  },
+  projectPriorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  projectPriorityText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   completedBadge: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#10B981',
     backgroundColor: '#D1FAE5',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+  },
+  completedBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10B981',
   },
   completedDate: {
     marginTop: 8,

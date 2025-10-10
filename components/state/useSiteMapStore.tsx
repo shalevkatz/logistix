@@ -63,6 +63,7 @@ type SiteMapState = {
   selectedCableId: string | null;
   deviceToPlace: DeviceType | null;
   viewport: Viewport;
+  preferredCableColor: string | null;
 
   // per-floor backgrounds
   activeFloorId?: string;
@@ -79,7 +80,6 @@ type SiteMapState = {
   setFloorName: (id: string, name: string) => void;
   setImageDimensions: (dims: { width: number; height: number }) => void;
   setRenderedImageSize: (size: { width: number; height: number; x: number; y: number }) => void;
-  
 
   
 
@@ -119,8 +119,65 @@ type SiteMapState = {
   loadDevices: (devices: DeviceNode[]) => void;
 };
 
-const COLOR_PALETTE = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#06b6d4', '#e11d48'];
-const nextCableColor = (prev?: string) => {
+// Replace line 122 with this comprehensive 40-color palette
+const COLOR_PALETTE = [
+  // Blues (6)
+  '#0066FF', // Electric Blue
+  '#00BFFF', // Sky Blue
+  '#4169E1', // Royal Blue
+  '#000080', // Navy Blue
+  '#1E90FF', // Dodger Blue
+  '#6495ED', // Cornflower Blue
+  
+  // Purples/Violets (6)
+  '#800080', // Purple
+  '#6A0DAD', // Deep Purple
+  '#8B00FF', // Violet
+  '#9370DB', // Medium Purple
+  '#4B0082', // Indigo
+  '#BA55D3', // Orchid
+  
+  // Pinks/Magentas (5)
+  '#FF00FF', // Magenta
+  '#FF1493', // Deep Pink
+  '#FF69B4', // Hot Pink
+  '#FFC0CB', // Pink
+  '#DB7093', // Pale Violet Red
+  
+  // Oranges/Corals (5)
+  '#FF8800', // Orange
+  '#FF6600', // Dark Orange
+  '#FF7F50', // Coral
+  '#FFA500', // Web Orange
+  '#FF4500', // Orange Red
+  
+  // Yellows/Golds (3)
+  '#FFD700', // Gold
+  '#FFFF00', // Yellow
+  '#F0E68C', // Khaki
+  
+  // Cyans/Teals (5)
+  '#00FFFF', // Cyan
+  '#00CED1', // Dark Turquoise
+  '#40E0D0', // Turquoise
+  '#008080', // Teal
+  '#20B2AA', // Light Sea Green
+  
+  // Neutrals (6)
+  '#000000', // Black
+  '#333333', // Dark Gray
+  '#808080', // Gray
+  '#A9A9A9', // Dark Gray
+  '#D3D3D3', // Light Gray
+  '#FFFFFF', // White
+  
+  // Browns/Earth Tones (4)
+  '#8B4513', // Saddle Brown
+  '#A0522D', // Sienna
+
+];
+
+  const nextCableColor = (prev?: string) => {
   if (!prev) return COLOR_PALETTE[0];
   const idx = COLOR_PALETTE.indexOf(prev);
   return COLOR_PALETTE[(idx + 1) % COLOR_PALETTE.length];
@@ -135,6 +192,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   deviceToPlace: null,
   viewport: { scale: 1, translateX: 0, translateY: 0 },
   loadDevices: (devices) => set({ nodes: devices }),
+  preferredCableColor: null,
 
   // per-floor backgrounds
   activeFloorId: undefined,
@@ -268,8 +326,13 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   startCable: (x, y) =>
     set((s) => {
       const past = [...s.historyPast, takeSnapshot(s)];
-      const lastColor = s.cables[s.cables.length - 1]?.color;
-      const color = nextCableColor(lastColor);
+      
+      // Use preferred color if set, otherwise cycle through palette
+      const color = s.preferredCableColor || (() => {
+        const lastColor = s.cables[s.cables.length - 1]?.color;
+        return nextCableColor(lastColor);
+      })();
+      
       return {
         cables: [...s.cables, { id: nanoid(), color, points: [{ x, y }], finished: false }],
         mode: 'draw-cable',

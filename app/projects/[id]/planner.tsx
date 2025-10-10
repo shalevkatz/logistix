@@ -1,4 +1,5 @@
-// app/projects/[id].tsx - FIXED MULTI-FLOOR SUPPORT
+// app/projects/[id].tsx - WITH PROJECT INFO BUTTON
+import CableColorPicker from '@/components/CableColorPicker';
 import CableStatusSelector from '@/components/CableStatusSelector';
 import DeviceStatusSelector from '@/components/DeviceStatusSelector';
 import FloorManager from '@/components/FloorManager';
@@ -8,7 +9,7 @@ import { EditorMode } from '@/components/types';
 import { supabase } from '@/lib/supabase';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +30,19 @@ type DbFloor = {
   image_path: string | null;
 };
 
+type ProjectInfo = {
+  title: string;
+  client_name: string | null;
+  phone_number: string | null;
+  location: string | null;
+  budget: number | null;
+  priority: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  description: string | null;
+  assigned_employee_ids: string[] | null;
+};
+
 export default function ProjectScreen() {
   const { id: projectId } = useLocalSearchParams<{ id: string }>();
   const nav = useNavigation();
@@ -43,6 +57,11 @@ export default function ProjectScreen() {
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
   const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
   
+  // Project Info Modal
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
+  const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
+  
   // Track project completion status
   const [projectCompleted, setProjectCompleted] = useState(false);
   const [hasPromptedCompletion, setHasPromptedCompletion] = useState(false);
@@ -52,9 +71,7 @@ export default function ProjectScreen() {
   const confettiRef = useRef<any>(null);
   const [hasShownConfetti, setHasShownConfetti] = useState(false);
 
-  // Subscribe to store changes for progress calculation
-  const storeNodes = useSiteMapStore((s) => s.nodes);
-  const storeCables = useSiteMapStore((s) => s.cables);
+
   
   // Track total project progress (all floors)
   const [totalProjectProgress, setTotalProjectProgress] = useState(0);
@@ -62,6 +79,33 @@ export default function ProjectScreen() {
   const [totalCables, setTotalCables] = useState(0);
   const [completedDevices, setCompletedDevices] = useState(0);
   const [completedCables, setCompletedCables] = useState(0);
+
+  // Load project info
+  const loadProjectInfo = useCallback(async () => {
+    try {
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .select('title, client_name, phone_number, location, budget, priority, start_date, due_date, description, assigned_employee_ids')
+        .eq('id', projectId)
+        .single();
+
+      if (projectError) throw projectError;
+      
+      setProjectInfo(projectData as ProjectInfo);
+
+      // Load employees if there are any assigned
+      if (projectData?.assigned_employee_ids && projectData.assigned_employee_ids.length > 0) {
+        const { data: employeesData } = await supabase
+          .from('employees')
+          .select('id, full_name')
+          .in('id', projectData.assigned_employee_ids);
+        
+        setEmployees(employeesData || []);
+      }
+    } catch (error) {
+      console.error('Error loading project info:', error);
+    }
+  }, [projectId]);
 
   // Calculate project progress across ALL floors
   const calculateTotalProjectProgress = useCallback(async () => {
@@ -124,18 +168,13 @@ const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null
 
   // Trigger confetti when project reaches 100%
   useEffect(() => {
-    // Don't do anything if project status hasn't loaded yet
     if (!projectStatusLoaded) return;
-    
-    // Don't do anything if project is already marked as completed
     if (projectCompleted) return;
     
-    // Show confetti and prompt when reaching 100% for the first time
     if (totalProjectProgress === 100 && !hasShownConfetti && (totalDevices + totalCables) > 0) {
       confettiRef.current?.start();
       setHasShownConfetti(true);
       
-      // Prompt to mark as completed (only once)
       if (!hasPromptedCompletion) {
         setTimeout(() => {
           Alert.alert(
@@ -160,7 +199,6 @@ const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null
         }, 1000);
       }
     } else if (totalProjectProgress < 100) {
-      // Reset flags only if progress drops below 100%
       setHasShownConfetti(false);
       setHasPromptedCompletion(false);
     }
@@ -199,14 +237,12 @@ const handleStatusChange = useCallback(async (status: 'installed' | 'pending' | 
 
   console.log('📊 Changing device status:', deviceToEditStatus, status);
 
-  // Update in store
   const nodes = useSiteMapStore.getState().nodes;
   const updatedNodes = nodes.map(n => 
     n.id === deviceToEditStatus ? { ...n, status } : n
   );
   useSiteMapStore.setState({ nodes: updatedNodes });
 
-  // Update in database if it's a DB device
   if (isDbId(deviceToEditStatus)) {
     try {
       const { error } = await supabase
@@ -219,7 +255,6 @@ const handleStatusChange = useCallback(async (status: 'installed' | 'pending' | 
         Alert.alert('Error', 'Failed to update device status');
       } else {
         console.log('✅ Device status updated in database');
-        // Recalculate total project progress
         await calculateTotalProjectProgress();
       }
     } catch (err) {
@@ -244,14 +279,12 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
 
   console.log('📊 Changing cable status:', cableToEditStatus, status);
 
-  // Update in store
   const cables = useSiteMapStore.getState().cables;
   const updatedCables = cables.map(c => 
     c.id === cableToEditStatus ? { ...c, status } : c
   );
   useSiteMapStore.setState({ cables: updatedCables });
 
-  // Update in database if it's a DB cable
   if (isDbId(cableToEditStatus)) {
     try {
       const { error } = await supabase
@@ -264,7 +297,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         Alert.alert('Error', 'Failed to update cable status');
       } else {
         console.log('✅ Cable status updated in database');
-        // Recalculate total project progress
         await calculateTotalProjectProgress();
       }
     } catch (err) {
@@ -295,7 +327,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
   const loadFloorData = useCallback(async (floorDbId: string) => {
     console.log('📥 Loading floor data for:', floorDbId);
 
-    // Load devices
     const { data: devicesData } = await supabase
       .from('devices')
       .select('id, type, x, y, rotation, scale, status')
@@ -311,7 +342,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       status: d.status as any,
     })) || [];
 
-    // Load cables
     const { data: cablesData } = await supabase
       .from('cables')
       .select('id, color, finished, points, status')
@@ -347,13 +377,11 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       mode: 'select',
     });
 
-    // Update store's floor image tracking
     const storeSetFloorImage = (useSiteMapStore.getState() as any).setFloorImage;
     if (storeSetFloorImage) {
       storeSetFloorImage(floor.id, toPublicUrl(floor.image_path));
     }
     
-    // Recalculate total project progress when switching floors
     await calculateTotalProjectProgress();
   }, [loadFloorData, calculateTotalProjectProgress]);
 
@@ -361,17 +389,14 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
   const handleOpenFloorManager = useCallback(() => {
     console.log('🏢 Opening floor manager, DB floors:', dbFloors.length);
     
-    // Convert DB floors to local floor format
     const localFloors = dbFloors.map(f => ({
       id: f.id,
       name: f.name,
       orderIndex: f.order_index,
     }));
     
-    // Set in store
     useSiteMapStore.getState().setLocalFloors(localFloors);
     
-    // Set active floor
     if (floorId) {
       const storeSetActiveFloorId = (useSiteMapStore.getState() as any).setActiveFloorId;
       if (storeSetActiveFloorId) {
@@ -379,7 +404,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       }
     }
     
-    // Set floor images
     const storeSetFloorImage = (useSiteMapStore.getState() as any).setFloorImage;
     if (storeSetFloorImage) {
       dbFloors.forEach(f => {
@@ -390,22 +414,41 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     setFloorManagerOpen(true);
   }, [dbFloors, floorId]);
 
-  // Handle floor manager close and floor switching
+// Handle floor manager close and floor switching
   const handleCloseFloorManager = useCallback(async () => {
     setFloorManagerOpen(false);
     
-    // Check if active floor changed
+    // Reload all floors from database to get any newly created floors or updated images
+    console.log('🔄 Reloading floors from database...');
+    const updatedFloors = await loadAllFloors();
+    setDbFloors(updatedFloors);
+    
     const storeActiveFloorId = (useSiteMapStore.getState() as any).activeFloorId;
     
     if (storeActiveFloorId && storeActiveFloorId !== floorId) {
-      // Find the floor in dbFloors
-      const newFloor = dbFloors.find(f => f.id === storeActiveFloorId);
+      // Switched to a different floor
+      const newFloor = updatedFloors.find(f => f.id === storeActiveFloorId);
       if (newFloor) {
         console.log('🔄 Floor changed, switching to:', newFloor.name);
         await switchToFloor(newFloor);
       }
+    } else if (storeActiveFloorId === floorId) {
+      // Still on the same floor, but check if image changed
+      const currentFloor = updatedFloors.find(f => f.id === floorId);
+      if (currentFloor) {
+        const newImageUrl = toPublicUrl(currentFloor.image_path);
+        if (newImageUrl !== imageUrl) {
+          console.log('🖼️ Floor image updated, refreshing...');
+          setImageUrl(newImageUrl);
+          
+          const storeSetFloorImage = (useSiteMapStore.getState() as any).setFloorImage;
+          if (storeSetFloorImage) {
+            storeSetFloorImage(currentFloor.id, newImageUrl);
+          }
+        }
+      }
     }
-  }, [floorId, dbFloors, switchToFloor]);
+  }, [floorId, imageUrl, loadAllFloors, switchToFloor]);
 
   // Reload function
   const reloadProjectData = useCallback(async () => {
@@ -413,7 +456,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     const { nodes, cables } = await loadFloorData(floorId);
     loadDevices(nodes);
     useSiteMapStore.setState({ cables });
-    // Recalculate total project progress
     await calculateTotalProjectProgress();
   }, [floorId, loadFloorData, loadDevices, calculateTotalProjectProgress]);
 
@@ -429,19 +471,16 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       const existingDevices = state.nodes.filter(n => isDbId(n.id));
       const newDevices = state.nodes.filter(n => !isDbId(n.id));
       
-      // DELETE removed devices
       if (deletedDeviceIds.length > 0) {
         await supabase.from('devices').delete().in('id', deletedDeviceIds);
         setDeletedDeviceIds([]);
       }
       
-      // DELETE removed cables
       if (deletedCableIds.length > 0) {
         await supabase.from('cables').delete().in('id', deletedCableIds);
         setDeletedCableIds([]);
       }
       
-      // UPDATE existing devices
       for (const device of existingDevices) {
         await supabase
           .from('devices')
@@ -455,7 +494,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           .eq('id', device.id);
       }
       
-      // INSERT new devices
       if (newDevices.length > 0) {
         const devicePayload = newDevices.map(n => ({
           floor_id: floorId,
@@ -470,7 +508,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         await supabase.from('devices').insert(devicePayload);
       }
       
-      // Handle cables
       const existingCables = state.cables.filter(c => isDbId(c.id));
       const newCables = state.cables.filter(c => !isDbId(c.id));
       
@@ -500,8 +537,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       
       console.log('✅ All changes saved!');
       await reloadProjectData();
-      
-      // Recalculate total project progress after saving
       await calculateTotalProjectProgress();
       
     } catch (error) {
@@ -560,10 +595,38 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     });
   }, [nav, mode, projectTitle, handleModeToggle]);
 
-  // Initial load - Load ALL floors
+  // Initial load
   React.useEffect(() => {
     (async () => {
       setLoading(true);
+      
+       // Clear store state to prevent stale data from previous projects
+      console.log('🧹 Clearing store state for fresh project load');
+      const store = useSiteMapStore.getState() as any;
+      
+      // Clear nodes and cables
+      useSiteMapStore.setState({
+        nodes: [],
+        cables: [],
+        selectedId: null,
+        selectedCableId: null,
+        mode: 'select',
+      });
+      
+      // Clear floor-related state
+      if (store.setLocalFloors) store.setLocalFloors([]);
+      if (store.setActiveFloorId) store.setActiveFloorId(null);
+      
+      // Clear all floor images
+      const floorImages = store.floorImages || {};
+      Object.keys(floorImages).forEach(key => {
+        if (store.setFloorImage) store.setFloorImage(key, null);
+      });
+      
+      console.log('✅ Store cleared');
+
+      // Load project info
+      await loadProjectInfo();
       
       // Load project completion status
       const { data: projectData } = await supabase
@@ -575,7 +638,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       if (projectData) {
         setProjectCompleted(projectData.completed ?? false);
       }
-      setProjectStatusLoaded(true); // Mark that we've loaded the status
+      setProjectStatusLoaded(true);
       
       const floors = await loadAllFloors();
       setDbFloors(floors);
@@ -586,16 +649,13 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         return;
       }
 
-      // Load first floor by default
       const firstFloor = floors[0];
       await switchToFloor(firstFloor);
-      
-      // Calculate initial total project progress
       await calculateTotalProjectProgress();
       
       setLoading(false);
     })();
-  }, [projectId, loadAllFloors, switchToFloor, calculateTotalProjectProgress]);
+  }, [projectId, loadAllFloors, switchToFloor, calculateTotalProjectProgress, loadProjectInfo]);
 
   const bustedUrl = React.useMemo(() => {
     if (!imageUrl) return null;
@@ -621,7 +681,125 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         colors={['#6D5DE7', '#A21FF9', '#FF6B9D', '#FFC700', '#00D9FF']}
       />
 
+      {/* Project Info Modal */}
+      <Modal
+        visible={infoModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setInfoModalVisible(false)}
+      >
+        <View style={infoStyles.modalOverlay}>
+          <View style={infoStyles.modalContent}>
+            {/* Header */}
+            <View style={infoStyles.modalHeader}>
+              <Text style={infoStyles.modalTitle}>Project Info</Text>
+              <Pressable onPress={() => setInfoModalVisible(false)} style={infoStyles.closeButton}>
+                <Text style={infoStyles.closeButtonText}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Content */}
+            <ScrollView style={infoStyles.scrollView} showsVerticalScrollIndicator={false}>
+              {/* Project Title */}
+              <View style={infoStyles.section}>
+                <Text style={infoStyles.sectionTitle}>📋 Project</Text>
+                <Text style={infoStyles.valueText}>{projectInfo?.title || 'Untitled Project'}</Text>
+              </View>
+
+              {/* Client Info */}
+              {projectInfo?.client_name && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>👤 Client</Text>
+                  <Text style={infoStyles.valueText}>{projectInfo.client_name}</Text>
+                </View>
+              )}
+
+              {/* Phone */}
+              {projectInfo?.phone_number && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>📞 Phone</Text>
+                  <Pressable onPress={() => Linking.openURL(`tel:${projectInfo.phone_number}`)}>
+                    <Text style={[infoStyles.valueText, infoStyles.phoneLink]}>
+                      {projectInfo.phone_number}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* Location */}
+              {projectInfo?.location && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>📍 Location</Text>
+                  <Text style={infoStyles.valueText}>{projectInfo.location}</Text>
+                </View>
+              )}
+
+              {/* Budget */}
+              {projectInfo?.budget && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>💰 Budget</Text>
+                  <Text style={infoStyles.valueText}>${projectInfo.budget.toLocaleString()}</Text>
+                </View>
+              )}
+
+              {/* Priority */}
+              {projectInfo?.priority && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>⚡ Priority</Text>
+                  <View style={[infoStyles.priorityBadge, {
+                    backgroundColor: projectInfo.priority === 'High' ? '#EF4444' : 
+                                    projectInfo.priority === 'Medium' ? '#F59E0B' : '#10B981'
+                  }]}>
+                    <Text style={infoStyles.priorityText}>{projectInfo.priority}</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Dates */}
+              {(projectInfo?.start_date || projectInfo?.due_date) && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>📅 Timeline</Text>
+                  {projectInfo.start_date && (
+                    <Text style={infoStyles.dateText}>
+                      Start: {new Date(projectInfo.start_date).toLocaleDateString()}
+                    </Text>
+                  )}
+                  {projectInfo.due_date && (
+                    <Text style={infoStyles.dateText}>
+                      Due: {new Date(projectInfo.due_date).toLocaleDateString()}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Description */}
+              {projectInfo?.description && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>📝 Description</Text>
+                  <Text style={infoStyles.descriptionText}>{projectInfo.description}</Text>
+                </View>
+              )}
+
+              {/* Employees */}
+              {employees.length > 0 && (
+                <View style={infoStyles.section}>
+                  <Text style={infoStyles.sectionTitle}>👷 Assigned Employees</Text>
+                  <View style={infoStyles.employeesList}>
+                    {employees.map(emp => (
+                      <View key={emp.id} style={infoStyles.employeeChip}>
+                        <Text style={infoStyles.employeeText}>{emp.full_name}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Progress Bar */}
+      {mode === 'read' && (
       <View
         style={{
           position: 'absolute',
@@ -648,7 +826,6 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           </Text>
         </View>
         
-        {/* Progress Bar */}
         <View style={{ 
           height: 10, 
           backgroundColor: '#E5E7EB', 
@@ -672,6 +849,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           }
         </Text>
       </View>
+      )}
 
       {/* Back Button */}
       <View
@@ -695,7 +873,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         </Pressable>
       </View>
       
-      {/* Edit/Done Button */}
+      {/* Info and Edit Buttons Row */}
       <View
         pointerEvents="box-none"
         style={{
@@ -703,8 +881,24 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           top: (insets?.top ?? 0) + 8,
           left: 12,
           zIndex: 999,
+          flexDirection: 'row',
+          gap: 8,
         }}
       >
+        {/* Info Button */}
+        <Pressable
+          onPress={() => setInfoModalVisible(true)}
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            backgroundColor: 'rgba(59, 130, 246, 0.7)',
+            borderRadius: 20,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700' }}>ℹ️ Info</Text>
+        </Pressable>
+
+        {/* Edit/Done Button */}
         <Pressable
           onPress={handleModeToggle}
           style={{
@@ -715,7 +909,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           }}
         >
           <Text style={{ color: 'white', fontWeight: '700' }}>
-            {mode === 'read' ? 'Edit' : 'Done'}
+            {mode === 'read' ? '✏️ Edit' : '✓ Done'}
           </Text>
         </Pressable>
       </View>
@@ -782,7 +976,8 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           אין עדיין תמונה לקומה הזו
         </Text>
       )}
-
+      <CableColorPicker />
+      
       {/* Floor Manager Modal */}
       <FloorManager
         visible={floorManagerOpen}
@@ -790,35 +985,137 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         seedBackground={imageUrl}
         existingFloors={dbFloors}
         onFloorSwitch={switchToFloor}
+        projectId={projectId}
       />
+      
       <DeviceStatusSelector
-  visible={statusModalVisible}
-  currentStatus={
-    deviceToEditStatus 
-      ? useSiteMapStore.getState().nodes.find(n => n.id === deviceToEditStatus)?.status ?? null
-      : null
-  }
-  onClose={() => {
-    setStatusModalVisible(false);
-    setDeviceToEditStatus(null);
-  }}
-  onSelectStatus={handleStatusChange}
-/>
+        visible={statusModalVisible}
+        currentStatus={
+          deviceToEditStatus 
+            ? useSiteMapStore.getState().nodes.find(n => n.id === deviceToEditStatus)?.status ?? null
+            : null
+        }
+        onClose={() => {
+          setStatusModalVisible(false);
+          setDeviceToEditStatus(null);
+        }}
+        onSelectStatus={handleStatusChange}
+      />
 
-<CableStatusSelector
-  visible={cableStatusModalVisible}
-  currentStatus={
-    cableToEditStatus 
-      ? useSiteMapStore.getState().cables.find(c => c.id === cableToEditStatus)?.status ?? null
-      : null
-  }
-  onClose={() => {
-    setCableStatusModalVisible(false);
-    setCableToEditStatus(null);
-  }}
-  onSelectStatus={handleCableStatusChange}
-/>
-
+      <CableStatusSelector
+        visible={cableStatusModalVisible}
+        currentStatus={
+          cableToEditStatus 
+            ? useSiteMapStore.getState().cables.find(c => c.id === cableToEditStatus)?.status ?? null
+            : null
+        }
+        onClose={() => {
+          setCableStatusModalVisible(false);
+          setCableToEditStatus(null);
+        }}
+        onSelectStatus={handleCableStatusChange}
+      />
     </View>
   );
 }
+
+const infoStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 18,
+    color: '#666',
+    fontWeight: '600',
+  },
+  scrollView: {
+    padding: 20,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  valueText: {
+    fontSize: 16,
+    color: '#111',
+    fontWeight: '500',
+  },
+  phoneLink: {
+    color: '#3B82F6',
+    textDecorationLine: 'underline',
+  },
+  priorityBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  priorityText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  dateText: {
+    fontSize: 15,
+    color: '#333',
+    marginBottom: 4,
+  },
+  descriptionText: {
+    fontSize: 15,
+    color: '#333',
+    lineHeight: 22,
+  },
+  employeesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  employeeChip: {
+    backgroundColor: '#6D5DE7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  employeeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});

@@ -1,7 +1,10 @@
-// components/FloorManager.tsx - UPDATED WITH DATABASE SUPPORT
+// components/FloorManager.tsx - UPDATED WITH DATABASE SUPPORT AND IMAGE UPLOAD
 import { supabase } from '@/lib/supabase';
+import { ensureSafePhoto } from '@/utils/image';
+import { uploadFloorImage } from '@/utils/uploadFloorImage';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
-import { FlatList, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { useSiteMapStore } from './state/useSiteMapStore';
 
 type Floor = { id: string; name: string; orderIndex: number };
@@ -22,6 +25,7 @@ type Props = {
   seedBackground?: string | null;
   existingFloors?: DbFloor[];
   onFloorSwitch?: (floor: DbFloor) => void;
+  projectId?: string | null;
 };
 
 export default function FloorManager({ 
@@ -29,7 +33,8 @@ export default function FloorManager({
   onClose, 
   seedBackground = null,
   existingFloors = [],
-  onFloorSwitch
+  onFloorSwitch,
+  projectId = null,
 }: Props) {
   const setLocalFloors = useSiteMapStore((s) => s.setLocalFloors);
   const setFloorName = useSiteMapStore((s) => s.setFloorName);
@@ -40,6 +45,7 @@ export default function FloorManager({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState<string>('');
   const [floorData, setFloorData] = useState<Record<string, { nodes: any[]; cables: any[] }>>({});
+  const [uploadingFloorId, setUploadingFloorId] = useState<string | null>(null);
 
   const nodes = useSiteMapStore((s) => s.nodes);
   const cables = useSiteMapStore((s) => s.cables);
@@ -111,20 +117,72 @@ export default function FloorManager({
     }
   }, [visible, existingFloors]);
 
-  const addFloor = () => {
-    const f: Floor = { id: makeId(), name: `Floor ${floors.length + 1}`, orderIndex: floors.length };
-
+  const addFloor = async () => {
     if (activeFloorId) captureCurrentInto(activeFloorId);
 
-    const next = floors.concat(f);
-    setFloors(next);
-    pushFloorsToGlobal(next);
-    setFloorData((m) => ({ ...m, [f.id]: { nodes: [], cables: [] } }));
-    
-    setActiveFloorIdLocal(f.id);
-    storeSetActiveFloorId(f.id);
-    storeSetFloorImage(f.id, null);
-    loadIntoStore([], []);
+    // If we're editing an existing project (have projectId), save the new floor to the database
+    if (projectId) {
+      try {
+        console.log('💾 Creating new floor in database for project:', projectId);
+        
+        // Let Supabase generate the UUID
+        const { data: newFloorData, error: insertError } = await supabase
+          .from('floors')
+          .insert({
+            project_id: projectId,
+            name: `Floor ${floors.length + 1}`,
+            order_index: floors.length,
+            image_path: null,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('❌ Failed to create floor:', insertError);
+          Alert.alert('Error', 'Failed to create floor in database');
+          return;
+        }
+
+        console.log('✅ Floor created in database with ID:', newFloorData.id);
+
+        // Use the database-generated ID
+        const f: Floor = { 
+          id: newFloorData.id, 
+          name: newFloorData.name, 
+          orderIndex: newFloorData.order_index 
+        };
+
+        // Update local state
+        const next = floors.concat(f);
+        setFloors(next);
+        pushFloorsToGlobal(next);
+        setFloorData((m) => ({ ...m, [f.id]: { nodes: [], cables: [] } }));
+        
+        setActiveFloorIdLocal(f.id);
+        storeSetActiveFloorId(f.id);
+        storeSetFloorImage(f.id, null);
+        loadIntoStore([], []);
+        
+      } catch (err) {
+        console.error('❌ Error creating floor:', err);
+        Alert.alert('Error', 'Failed to create floor');
+        return;
+      }
+    } else {
+      // New project flow - use temporary ID
+      const f: Floor = { id: makeId(), name: `Floor ${floors.length + 1}`, orderIndex: floors.length };
+
+      // Update local state
+      const next = floors.concat(f);
+      setFloors(next);
+      pushFloorsToGlobal(next);
+      setFloorData((m) => ({ ...m, [f.id]: { nodes: [], cables: [] } }));
+      
+      setActiveFloorIdLocal(f.id);
+      storeSetActiveFloorId(f.id);
+      storeSetFloorImage(f.id, null);
+      loadIntoStore([], []);
+    }
   };
 
   const handleClose = () => {
@@ -212,11 +270,64 @@ export default function FloorManager({
     }
   };
 
-  const deleteFloor = (floor: Floor) => {
+  const deleteFloor = async (floor: Floor) => {
     if (floors.length <= 1) {
       setFloorData((m) => ({ ...m, [floor.id]: { nodes: [], cables: [] } }));
       if (activeFloorId === floor.id) loadIntoStore([], []);
       return;
+    }
+
+    // Delete from database if it's an existing floor
+    const isDbFloor = existingFloors.some(f => f.id === floor.id);
+    if (isDbFloor) {
+      try {
+        console.log('🗑️ Deleting floor from database:', floor.name);
+        
+        // First, delete all devices that belong to this floor
+        console.log('🗑️ Deleting devices for floor:', floor.id);
+        const { error: devicesError } = await supabase
+          .from('devices')
+          .delete()
+          .eq('floor_id', floor.id);
+        
+        if (devicesError) {
+          console.error('❌ Failed to delete devices:', devicesError);
+          Alert.alert('Error', 'Failed to delete floor devices');
+          return;
+        }
+        
+        // Then, delete all cables that belong to this floor
+        console.log('🗑️ Deleting cables for floor:', floor.id);
+        const { error: cablesError } = await supabase
+          .from('cables')
+          .delete()
+          .eq('floor_id', floor.id);
+        
+        if (cablesError) {
+          console.error('❌ Failed to delete cables:', cablesError);
+          Alert.alert('Error', 'Failed to delete floor cables');
+          return;
+        }
+        
+        // Finally, delete the floor itself
+        console.log('🗑️ Deleting floor:', floor.id);
+        const { error } = await supabase
+          .from('floors')
+          .delete()
+          .eq('id', floor.id);
+
+        if (error) {
+          console.error('❌ Failed to delete floor from database:', error);
+          Alert.alert('Error', 'Failed to delete floor from database');
+          return;
+        }
+
+        console.log('✅ Floor and all its data deleted from database');
+      } catch (err) {
+        console.error('❌ Error deleting floor:', err);
+        Alert.alert('Error', 'Failed to delete floor');
+        return;
+      }
     }
 
     const next = floors.filter((f) => f.id !== floor.id).map((f, i) => ({ ...f, orderIndex: i }));
@@ -237,7 +348,7 @@ export default function FloorManager({
     }
   };
 
-  const reorder = (from: number, to: number) => {
+  const reorder = async (from: number, to: number) => {
     if (to < 0 || to >= floors.length) return;
     const arr = floors.slice();
     const [moved] = arr.splice(from, 1);
@@ -245,6 +356,101 @@ export default function FloorManager({
     const next = arr.map((f, i) => ({ ...f, orderIndex: i }));
     setFloors(next);
     pushFloorsToGlobal(next);
+
+    // Update order in database if these are existing floors
+    if (existingFloors.length > 0) {
+      try {
+        // Update all floors with new order indices
+        const updates = next.map(f => 
+          supabase
+            .from('floors')
+            .update({ order_index: f.orderIndex })
+            .eq('id', f.id)
+        );
+
+        await Promise.all(updates);
+        console.log('✅ Floor order updated in database');
+      } catch (err) {
+        console.error('❌ Error updating floor order:', err);
+      }
+    }
+  };
+
+  const handleUploadFloorImage = async (floorId: string) => {
+    try {
+      setUploadingFloorId(floorId);
+
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow access to your photo library');
+        setUploadingFloorId(null);
+        return;
+      }
+
+      // Pick image
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (result.canceled) {
+        setUploadingFloorId(null);
+        return;
+      }
+
+      const imageUri = result.assets[0].uri;
+      console.log('📸 Selected image:', imageUri);
+
+      // Process the image first (same as new-site-map.tsx)
+      const processed = await ensureSafePhoto(imageUri);
+      if (!processed) {
+        Alert.alert('Image Error', 'Could not process image. Please choose a different photo.');
+        setUploadingFloorId(null);
+        return;
+      }
+
+      console.log('✅ Image processed:', processed);
+
+      // Use the same uploadFloorImage utility that works in new-site-map.tsx
+      const storagePath = await uploadFloorImage(processed, floorId, 0);
+      console.log('✅ Image uploaded to storage:', storagePath);
+
+      // Update floor in database
+      const { error: updateError } = await supabase
+        .from('floors')
+        .update({ image_path: storagePath })
+        .eq('id', floorId);
+
+      if (updateError) {
+        console.error('❌ Failed to update floor image in DB:', updateError);
+        Alert.alert('Error', 'Failed to save image path to database');
+        setUploadingFloorId(null);
+        return;
+      }
+
+      console.log('✅ Floor image path updated in database');
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('site-maps')
+        .getPublicUrl(storagePath);
+
+      const publicUrl = urlData.publicUrl;
+      console.log('🔗 Public URL:', publicUrl);
+
+      // Update store with new image
+      storeSetFloorImage(floorId, publicUrl);
+
+      Alert.alert('Success', 'Floor image uploaded!');
+      setUploadingFloorId(null);
+
+    } catch (err) {
+      console.error('❌ Error uploading floor image:', err);
+      Alert.alert('Error', 'Failed to upload image');
+      setUploadingFloorId(null);
+    }
   };
 
   return (
@@ -315,6 +521,16 @@ export default function FloorManager({
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       <Pressable onPress={() => openFloor(item.id)}>
                         <Text style={{ color: '#A78BFA' }}>Open</Text>
+                      </Pressable>
+                      <Pressable 
+                        onPress={() => handleUploadFloorImage(item.id)}
+                        disabled={uploadingFloorId === item.id}
+                      >
+                        {uploadingFloorId === item.id ? (
+                          <ActivityIndicator size="small" color="#10B981" />
+                        ) : (
+                          <Text style={{ color: '#10B981' }}>Image</Text>
+                        )}
                       </Pressable>
                       {!isRenaming && (
                         <Pressable onPress={() => beginRename(item)}>

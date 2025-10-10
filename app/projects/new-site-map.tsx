@@ -1,8 +1,9 @@
 // app/projects/new-site-map.tsx
+import CableColorPicker from '@/components/CableColorPicker';
 import { useSiteMapStore } from '@/components/state/useSiteMapStore';
 import { uploadFloorImage } from '@/utils/uploadFloorImage';
 import * as ImagePicker from 'expo-image-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import FloorManager from '../../components/FloorManager';
@@ -14,6 +15,7 @@ import { ensureSafePhoto } from '../../utils/image';
 type Payload = {
   title: string;
   client_name: string | null;
+  phone_number: string | null;
   location: string | null;
   budget: number | null;
   priority: 'Low' | 'Medium' | 'High';
@@ -39,6 +41,33 @@ export default function NewSiteMap() {
     (useSiteMapStore.getState() as any).setActiveFloorId as (id: string) => void;
   const setFloorImage =
     (useSiteMapStore.getState() as any).setFloorImage as (id: string, uri: string | null) => void;
+
+  // Clear everything when screen comes into focus (for creating new projects)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🧹 Clearing all state for new project');
+      
+      // Clear the main store
+      clearAll();
+      
+      // Explicitly clear all floor-related state
+      const store = useSiteMapStore.getState() as any;
+      if (store.setLocalFloors) store.setLocalFloors([]);
+      if (store.setActiveFloorId) store.setActiveFloorId(null);
+      if (store.setFloorImage) {
+        // Clear all floor images
+        const floorImages = store.floorImages || {};
+        Object.keys(floorImages).forEach(key => {
+          if (store.setFloorImage) store.setFloorImage(key, null);
+        });
+      }
+      
+      // Clear local state
+      setSafeUri(null);
+      
+      console.log('✅ All state cleared');
+    }, [clearAll])
+  );
 
   const ensureFirstFloor = useCallback((): string => {
     const s = useSiteMapStore.getState() as any;
@@ -136,6 +165,7 @@ export default function NewSiteMap() {
         .insert({
           title: form.title,
           client_name: form.client_name,
+          phone_number: form.phone_number,
           location: form.location,
           budget: form.budget,
           priority: form.priority,
@@ -318,6 +348,7 @@ export default function NewSiteMap() {
 
       <View style={{ flex: 1 }}>
         <SitePlanner imageUrl={safeUri} editable={true} />
+        <CableColorPicker />
       </View>
 
       <View style={{ marginTop: 10, alignItems: 'center' }}>

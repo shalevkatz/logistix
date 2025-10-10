@@ -45,7 +45,7 @@ export default function HomeScreen() {
   const { serviceCalls, loading: serviceCallsLoading, error: serviceCallsError, refetch: refetchServiceCalls } = useServiceCalls(userId);
   
   // Service calls filter state
-  const [serviceCallStatusFilter, setServiceCallStatusFilter] = useState<ServiceCallStatus | 'all'>('all');
+  const [serviceCallStatusFilter, setServiceCallStatusFilter] = useState<'active' | 'open' | 'in_progress' | 'completed'>('active');
 
   // Filter projects based on search query and completed status
   const filteredProjects = useMemo(() => {
@@ -81,7 +81,11 @@ export default function HomeScreen() {
     let filtered = serviceCalls;
 
     // Filter by status
-    if (serviceCallStatusFilter !== 'all') {
+    if (serviceCallStatusFilter === 'active') {
+      // Show only open and in_progress (exclude completed)
+      filtered = filtered.filter(call => call.status === 'open' || call.status === 'in_progress');
+    } else {
+      // For specific status filters (open, in_progress, completed)
       filtered = filtered.filter(call => call.status === serviceCallStatusFilter);
     }
 
@@ -102,6 +106,7 @@ export default function HomeScreen() {
   
   // Count service calls by status
   const serviceCallStatusCounts = useMemo(() => ({
+    active: serviceCalls.filter(c => c.status === 'open' || c.status === 'in_progress').length,
     open: serviceCalls.filter(c => c.status === 'open').length,
     in_progress: serviceCalls.filter(c => c.status === 'in_progress').length,
     completed: serviceCalls.filter(c => c.status === 'completed').length,
@@ -369,11 +374,11 @@ export default function HomeScreen() {
           // Projects list
           <View style={{ flex: 1 }}>
             <View style={styles.summaryRow}>
-              <View style={styles.card}>
+              <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
                 <Text style={styles.cardNum}>{activeProjectsCount}</Text>
                 <Text style={styles.cardLabel}>Active Projects</Text>
               </View>
-              <View style={styles.card}>
+              <View style={[styles.card, { backgroundColor: '#D1FAE5' }]}>
                 <Text style={styles.cardNum}>{completedProjectsCount}</Text>
                 <Text style={styles.cardLabel}>Completed</Text>
               </View>
@@ -445,17 +450,60 @@ export default function HomeScreen() {
                     renderLeftActions={() => renderLeftActions(item.id, item.title || 'Untitled')}
                     overshootLeft={false}
                   >
-                    <Pressable onPress={() => openProject(item.id)} style={[
-                      styles.projectCard,
-                      item.completed && styles.projectCardCompleted
-                    ]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Text style={styles.projectName}>{item.title}</Text>
-                        {item.completed && <Text style={styles.completedBadge}>✓ Done</Text>}
+                    <Pressable 
+                      onPress={() => openProject(item.id)} 
+                      style={[
+                        styles.projectCard,
+                        item.completed && styles.projectCardCompleted
+                      ]}
+                    >
+                      <View style={styles.projectCardHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.projectName}>{item.title}</Text>
+                          {item.client_name && (
+                            <Text style={styles.projectClient}>👤 {item.client_name}</Text>
+                          )}
+                        </View>
+                        {item.completed && (
+                          <View style={styles.completedBadge}>
+                            <Text style={styles.completedBadgeText}>✓ Done</Text>
+                          </View>
+                        )}
+                        {!item.completed && item.priority && (
+                          <View style={[
+                            styles.projectPriorityBadge,
+                            { backgroundColor: 
+                              item.priority === 'High' ? '#EF4444' : 
+                              item.priority === 'Medium' ? '#F59E0B' : '#10B981'
+                            }
+                          ]}>
+                            <Text style={styles.projectPriorityText}>{item.priority}</Text>
+                          </View>
+                        )}
                       </View>
-                      <Text numberOfLines={2} style={styles.projectDesc}>
-                        {item.description || 'No description'}
-                      </Text>
+
+                      {item.location && (
+                        <Text style={styles.projectLocation} numberOfLines={1}>📍 {item.location}</Text>
+                      )}
+
+                      {item.start_date && (
+                        <Text style={styles.projectDate}>
+                          📅 Start: {new Date(item.start_date).toLocaleDateString()}
+                        </Text>
+                      )}
+
+                      {item.due_date && (
+                        <Text style={styles.projectDate}>
+                          🎯 Due: {new Date(item.due_date).toLocaleDateString()}
+                        </Text>
+                      )}
+
+                      {item.description && (
+                        <Text numberOfLines={2} style={styles.projectDesc}>
+                          {item.description}
+                        </Text>
+                      )}
+
                       {item.completed && item.completed_at && (
                         <Text style={styles.completedDate}>
                           Completed: {new Date(item.completed_at).toLocaleDateString()}
@@ -492,12 +540,8 @@ export default function HomeScreen() {
             {/* Service Calls Summary */}
             <View style={styles.summaryRow}>
               <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
-                <Text style={styles.cardNum}>{serviceCallStatusCounts.open}</Text>
-                <Text style={styles.cardLabel}>Open</Text>
-              </View>
-              <View style={[styles.card, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={styles.cardNum}>{serviceCallStatusCounts.in_progress}</Text>
-                <Text style={styles.cardLabel}>In Progress</Text>
+                <Text style={styles.cardNum}>{serviceCallStatusCounts.active}</Text>
+                <Text style={styles.cardLabel}>Active Calls</Text>
               </View>
               <View style={[styles.card, { backgroundColor: '#D1FAE5' }]}>
                 <Text style={styles.cardNum}>{serviceCallStatusCounts.completed}</Text>
@@ -507,14 +551,14 @@ export default function HomeScreen() {
 
             {/* Status Filter */}
             <View style={styles.serviceCallFilterTabs}>
-              {(['all', 'open', 'in_progress', 'completed'] as const).map(status => (
+              {(['active', 'open', 'in_progress', 'completed'] as const).map(status => (
                 <Pressable
                   key={status}
                   onPress={() => setServiceCallStatusFilter(status)}
                   style={[styles.serviceCallFilterTab, serviceCallStatusFilter === status && styles.serviceCallFilterTabActive]}
                 >
                   <Text style={[styles.serviceCallFilterTabText, serviceCallStatusFilter === status && styles.serviceCallFilterTabTextActive]}>
-                    {status === 'all' ? 'All' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                    {status === 'active' ? 'Active' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
                   </Text>
                 </Pressable>
               ))}

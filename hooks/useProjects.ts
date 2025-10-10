@@ -7,6 +7,10 @@ export type Project = {
   owner_id: string;
   title: string | null;
   description: string | null;
+  client_name: string | null;
+  location: string | null;
+  start_date: string | null;
+  due_date: string | null;
   priority: 'Low' | 'Medium' | 'High' | null;
   created_at: string;
   updated_at: string;
@@ -19,6 +23,10 @@ type Row = {
   owner_id: string;
   title?: string | null;
   description: string | null;
+  client_name: string | null;
+  location: string | null;
+  start_date: string | null;
+  due_date: string | null;
   priority: 'Low' | 'Medium' | 'High' | null;
   created_at: string;
   updated_at: string;
@@ -44,7 +52,7 @@ export function useProjects(userId?: string) {
 
       const { data, error } = await supabase
         .from('projects')
-        .select('id, owner_id, title, description, priority, created_at, updated_at, completed, completed_at')
+        .select('id, owner_id, title, description, client_name, location, start_date, due_date, priority, created_at, updated_at, completed, completed_at')
         .eq('owner_id', userId)
         .order('created_at', { ascending: false });
 
@@ -55,6 +63,10 @@ export function useProjects(userId?: string) {
         owner_id: r.owner_id,
         title: (r.title ?? null),
         description: r.description ?? null,
+        client_name: r.client_name ?? null,
+        location: r.location ?? null,
+        start_date: r.start_date ?? null,
+        due_date: r.due_date ?? null,
         priority: r.priority ?? null,
         created_at: r.created_at,
         updated_at: r.updated_at,
@@ -75,7 +87,7 @@ export function useProjects(userId?: string) {
     mountedRef.current = true;
     fetchProjects();
 
-    // רענון בריל-טיים על כל שינוי בטבלת projects של המשתמש
+    // Real-time refresh on any change to user's projects table
     let channel: ReturnType<typeof supabase.channel> | null = null;
     if (userId) {
       channel = supabase

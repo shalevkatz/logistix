@@ -80,6 +80,7 @@ type SiteMapState = {
   setFloorName: (id: string, name: string) => void;
   setImageDimensions: (dims: { width: number; height: number }) => void;
   setRenderedImageSize: (size: { width: number; height: number; x: number; y: number }) => void;
+  setPreferredCableColor: (color: string | null) => void;
 
   
 
@@ -256,7 +257,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
     })),
     
   setLocalFloors: (floors) => set({ localFloors: floors }),
-
+setPreferredCableColor: (color) => set({ preferredCableColor: color }),
   setAllFloorCanvases: (m) => set({ floorCanvases: m }),
   
   // basic controls

@@ -346,9 +346,9 @@ export default function NewSiteMap() {
         </Pressable>
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, position: 'relative' }}>
         <SitePlanner imageUrl={safeUri} editable={true} />
-        <CableColorPicker />
+        <CableColorPicker editable={true} />
       </View>
 
       <View style={{ marginTop: 10, alignItems: 'center' }}>

@@ -67,6 +67,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
   emptyTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -75,6 +79,18 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
     opacity: 0.7,
+  },
+  emptyButton: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 24,
+  },
+  emptyButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   bigAddCircle: {
     marginTop: 32,
@@ -432,5 +448,93 @@ export const styles = StyleSheet.create({
   },
   tabLabelActive: {
     color: '#6D5DE7',
+  },
+
+  // Employee Styles (matching employees.tsx design)
+  employeeStatsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  employeeStatCard: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6D5DE7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  employeeStatNumber: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  employeeStatLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  employeeCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  employeeAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#6D5DE7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  employeeAvatarText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  employeeInfo: {
+    flex: 1,
+  },
+  employeeName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  employeeEmail: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  employeeDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  employeeDeleteButton: {
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+    borderRadius: 12,
+  },
+  employeeDeleteButtonText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

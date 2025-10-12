@@ -1,2 +1,2 @@
 // app/index.tsx
-export { default } from './HomeScreen';
+export { default } from '../components/RoleBasedRouter';

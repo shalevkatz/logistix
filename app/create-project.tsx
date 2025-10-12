@@ -177,31 +177,32 @@ export default function CreateProjectScreen() {
     },
   });
 
-  // Fetch employees
-  const fetchEmployees = useCallback(async () => {
-    try {
-      setLoadingEmployees(true);
-      const { data: auth } = await supabase.auth.getUser();
-      const user = auth.user;
-      if (!user) {
-        setEmployees([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('employees')
-        .select('id, full_name')
-        .eq('owner_id', user.id)
-        .order('full_name', { ascending: true });
-
-      if (error) throw error;
-      setEmployees(data || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingEmployees(false);
+const fetchEmployees = useCallback(async () => {
+  try {
+    setLoadingEmployees(true);
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (!user) {
+      setEmployees([]);
+      return;
     }
-  }, []);
+
+    // ✅ FIXED: Query profiles table instead of employees table
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('role', 'employee')
+      .eq('manager_id', user.id)  // Only show YOUR employees
+      .order('full_name', { ascending: true });
+
+    if (error) throw error;
+    setEmployees(data || []);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setLoadingEmployees(false);
+  }
+}, []);
 
   React.useEffect(() => {
     let mounted = true;
@@ -404,67 +405,57 @@ export default function CreateProjectScreen() {
             </View>
           </View>
 
-          {/* Employees */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Assign employees</Text>
+         
 
-            {loadingEmployees ? (
-              <ActivityIndicator style={{ marginTop: 12 }} />
-            ) : employees.length === 0 ? (
-              <View>
-                <Text style={styles.helpText}>You have no employees yet. Create some first.</Text>
+{/* Employees */}
+<View style={styles.fieldGroup}>
+  <Text style={styles.label}>Assign employees</Text>
+
+  {loadingEmployees ? (
+    <ActivityIndicator style={{ marginTop: 12 }} />
+  ) : employees.length === 0 ? (
+    <View>
+      <Text style={styles.helpText}>
+        No employees available. Use the "+ Employee" button on the home screen to add team members.
+      </Text>
+    </View>
+  ) : (
+    <Controller
+      control={control}
+      name="employee_ids"
+      render={({ field: { value, onChange } }) => {
+        const selected = new Set(value || []);
+        const toggle = (id: string) => {
+          const next = new Set(selected);
+          next.has(id) ? next.delete(id) : next.add(id);
+          onChange(Array.from(next));
+        };
+        return (
+          <View style={styles.employeeChipsWrap}>
+            {employees.map((emp) => {
+              const active = selected.has(emp.id);
+              return (
                 <Pressable
-                  style={styles.secondaryButton}
-                  onPress={() => router.push('/employees/CreateEmployee')}
+                  key={emp.id}
+                  onPress={() => toggle(emp.id)}
+                  style={[
+                    styles.employeeChip,
+                    active && styles.employeeChipActive,
+                  ]}
                 >
-                  <Text style={styles.secondaryButtonText}>Add employee</Text>
+                  <Text style={[styles.employeeChipText, active && styles.employeeChipTextActive]}>
+                    {emp.full_name}
+                  </Text>
                 </Pressable>
-              </View>
-            ) : (
-              <>
-                <Controller
-                  control={control}
-                  name="employee_ids"
-                  render={({ field: { value, onChange } }) => {
-                    const selected = new Set(value || []);
-                    const toggle = (id: string) => {
-                      const next = new Set(selected);
-                      next.has(id) ? next.delete(id) : next.add(id);
-                      onChange(Array.from(next));
-                    };
-                    return (
-                      <View style={styles.employeeChipsWrap}>
-                        {employees.map((emp) => {
-                          const active = selected.has(emp.id);
-                          return (
-                            <Pressable
-                              key={emp.id}
-                              onPress={() => toggle(emp.id)}
-                              style={[
-                                styles.employeeChip,
-                                active && styles.employeeChipActive,
-                              ]}
-                            >
-                              <Text style={[styles.employeeChipText, active && styles.employeeChipTextActive]}>
-                                {emp.full_name}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    );
-                  }}
-                />
-                <Pressable
-                  style={styles.secondaryButton}
-                  onPress={() => router.push('/employees/CreateEmployee')}
-                >
-                  <Text style={styles.secondaryButtonText}>Add another employee</Text>
-                </Pressable>
-              </>
-            )}
-            {errors.employee_ids && <Text style={styles.errorText}>{errors.employee_ids.message}</Text>}
+              );
+            })}
           </View>
+        );
+      }}
+    />
+  )}
+  {errors.employee_ids && <Text style={styles.errorText}>{errors.employee_ids.message}</Text>}
+</View>
 
           {/* Description */}
           <View style={styles.fieldGroup}>

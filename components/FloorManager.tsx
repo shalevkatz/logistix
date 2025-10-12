@@ -26,15 +26,17 @@ type Props = {
   existingFloors?: DbFloor[];
   onFloorSwitch?: (floor: DbFloor) => void;
   projectId?: string | null;
+  isEmployee?: boolean;
 };
 
-export default function FloorManager({ 
-  visible, 
-  onClose, 
+export default function FloorManager({
+  visible,
+  onClose,
   seedBackground = null,
   existingFloors = [],
   onFloorSwitch,
   projectId = null,
+  isEmployee = false,
 }: Props) {
   const setLocalFloors = useSiteMapStore((s) => s.setLocalFloors);
   const setFloorName = useSiteMapStore((s) => s.setFloorName);
@@ -455,103 +457,309 @@ export default function FloorManager({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose} transparent>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' }}>
         <View
           style={{
-            backgroundColor: '#151515',
-            padding: 16,
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16,
+            backgroundColor: '#1a1a2e',
+            paddingTop: 24,
+            paddingHorizontal: 20,
+            paddingBottom: 20,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
             maxHeight: '85%',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 12,
+            elevation: 8,
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' as const }}>Floors</Text>
-            <Pressable onPress={handleClose}>
-              <Text style={{ color: '#A78BFA', fontWeight: '600' as const }}>Close</Text>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <View>
+              <Text style={{ color: 'white', fontSize: 24, fontWeight: '800' as const }}>Manage Floors</Text>
+              <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 2 }}>
+                {floors.length} {floors.length === 1 ? 'floor' : 'floors'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleClose}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#9ca3af', fontSize: 20, fontWeight: '600' as const }}>×</Text>
             </Pressable>
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-            <Pressable onPress={addFloor} style={{ paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#6D28D9', borderRadius: 8 }}>
-              <Text style={{ color: 'white', fontWeight: '700' as const }}>+ Add Floor</Text>
+          {/* Add Floor Button - Only for managers */}
+          {!isEmployee && (
+            <Pressable
+              onPress={addFloor}
+              style={{
+                paddingVertical: 14,
+                paddingHorizontal: 18,
+                backgroundColor: '#7c3aed',
+                borderRadius: 12,
+                marginBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                shadowColor: '#7c3aed',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 4,
+              }}
+            >
+              <Text style={{ color: 'white', fontSize: 18, fontWeight: '600' as const }}>+</Text>
+              <Text style={{ color: 'white', fontWeight: '700' as const, fontSize: 15 }}>Add New Floor</Text>
             </Pressable>
-          </View>
+          )}
 
+          {/* Floors List */}
           <FlatList
             data={floors.slice().sort((a, b) => a.orderIndex - b.orderIndex)}
             keyExtractor={(f) => f.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 10 }}
             renderItem={({ item, index }) => {
               const isActive = item.id === activeFloorId;
               const isRenaming = renamingId === item.id;
 
               return (
-                <View
+                <Pressable
+                  onPress={() => openFloor(item.id)}
                   style={{
-                    backgroundColor: isActive ? '#272343' : '#1F1F1F',
-                    borderRadius: 10,
-                    padding: 12,
-                    marginBottom: 8,
+                    backgroundColor: isActive ? '#2d2d44' : '#252538',
+                    borderRadius: 14,
+                    padding: 16,
+                    marginBottom: 12,
+                    borderWidth: isActive ? 2 : 1,
+                    borderColor: isActive ? '#7c3aed' : 'rgba(124, 58, 237, 0.2)',
+                    shadowColor: isActive ? '#7c3aed' : '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: isActive ? 0.3 : 0.1,
+                    shadowRadius: 4,
+                    elevation: isActive ? 4 : 2,
                   }}
                 >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    {isRenaming ? (
-                      <View style={{ flex: 1, marginRight: 12 }}>
-                        <TextInput
-                          value={renameText}
-                          onChangeText={setRenameText}
-                          autoFocus
-                          placeholder="Floor name"
-                          placeholderTextColor="#888"
-                          onSubmitEditing={() => commitRename(item.id)}
-                          onBlur={() => commitRename(item.id)}
-                          style={{
-                            backgroundColor: '#111',
-                            color: '#fff',
-                            paddingHorizontal: 10,
-                            paddingVertical: Platform.OS === 'ios' ? 10 : 8,
-                            borderRadius: 8,
-                          }}
-                        />
+                  {/* Main Content */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      {/* Floor Number Badge */}
+                      <View style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        backgroundColor: isActive ? '#7c3aed' : 'rgba(124, 58, 237, 0.2)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Text style={{
+                          color: isActive ? 'white' : '#a78bfa',
+                          fontWeight: '800' as const,
+                          fontSize: 16,
+                        }}>
+                          {index + 1}
+                        </Text>
                       </View>
-                    ) : (
-                      <Text style={{ color: 'white', fontWeight: '600' as const }}>{item.name}</Text>
-                    )}
 
-                    <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <Pressable onPress={() => openFloor(item.id)}>
-                        <Text style={{ color: '#A78BFA' }}>Open</Text>
-                      </Pressable>
-                      <Pressable 
-                        onPress={() => handleUploadFloorImage(item.id)}
+                      {/* Floor Name */}
+                      {isRenaming ? (
+                        <View style={{ flex: 1 }}>
+                          <TextInput
+                            value={renameText}
+                            onChangeText={setRenameText}
+                            autoFocus
+                            placeholder="Floor name"
+                            placeholderTextColor="#6b7280"
+                            onSubmitEditing={() => commitRename(item.id)}
+                            onBlur={() => commitRename(item.id)}
+                            style={{
+                              backgroundColor: '#1a1a2e',
+                              color: '#fff',
+                              paddingHorizontal: 12,
+                              paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+                              borderRadius: 8,
+                              fontSize: 15,
+                              fontWeight: '600' as const,
+                              borderWidth: 1,
+                              borderColor: '#7c3aed',
+                            }}
+                          />
+                        </View>
+                      ) : (
+                        <View style={{ flex: 1 }}>
+                          <Text style={{
+                            color: 'white',
+                            fontWeight: '700' as const,
+                            fontSize: 16,
+                          }}>
+                            {item.name}
+                          </Text>
+                          {isActive && (
+                            <Text style={{
+                              color: '#a78bfa',
+                              fontSize: 12,
+                              marginTop: 2,
+                              fontWeight: '500' as const,
+                            }}>
+                              Currently viewing
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Reorder Buttons - Only for managers */}
+                    {!isEmployee && (
+                      <View style={{ flexDirection: 'row', gap: 6 }} onStartShouldSetResponder={() => true}>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            reorder(index, index - 1);
+                          }}
+                          disabled={index === 0}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            backgroundColor: index === 0 ? 'rgba(107, 114, 128, 0.2)' : 'rgba(124, 58, 237, 0.2)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{
+                            color: index === 0 ? '#6b7280' : '#a78bfa',
+                            fontSize: 16,
+                            fontWeight: '800' as const,
+                          }}>
+                            ↑
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            reorder(index, index + 1);
+                          }}
+                          disabled={index === floors.length - 1}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            backgroundColor: index === floors.length - 1 ? 'rgba(107, 114, 128, 0.2)' : 'rgba(124, 58, 237, 0.2)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{
+                            color: index === floors.length - 1 ? '#6b7280' : '#a78bfa',
+                            fontSize: 16,
+                            fontWeight: '800' as const,
+                          }}>
+                            ↓
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Action Buttons - Only for managers */}
+                  {!isEmployee && (
+                    <View style={{ flexDirection: 'row', gap: 8 }} onStartShouldSetResponder={() => true}>
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleUploadFloorImage(item.id);
+                        }}
                         disabled={uploadingFloorId === item.id}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: 'rgba(16, 185, 129, 0.3)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
                         {uploadingFloorId === item.id ? (
                           <ActivityIndicator size="small" color="#10B981" />
                         ) : (
-                          <Text style={{ color: '#10B981' }}>Image</Text>
+                          <Text style={{ color: '#10B981', fontWeight: '600' as const, fontSize: 13 }}>
+                            📷 Image
+                          </Text>
                         )}
                       </Pressable>
+
                       {!isRenaming && (
-                        <Pressable onPress={() => beginRename(item)}>
-                          <Text style={{ color: '#A78BFA' }}>Rename</Text>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            beginRename(item);
+                          }}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            backgroundColor: 'rgba(167, 139, 250, 0.15)',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: 'rgba(167, 139, 250, 0.3)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{ color: '#A78BFA', fontWeight: '600' as const, fontSize: 13 }}>
+                            ✏️ Rename
+                          </Text>
                         </Pressable>
                       )}
-                      <Pressable onPress={() => deleteFloor(item)}>
-                        <Text style={{ color: '#F87171' }}>Delete</Text>
+
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          Alert.alert(
+                            'Delete Floor',
+                            `Are you sure you want to delete "${item.name}"? This will remove all devices and cables on this floor.`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Delete',
+                                style: 'destructive',
+                                onPress: () => deleteFloor(item)
+                              }
+                            ]
+                          );
+                        }}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: 'rgba(239, 68, 68, 0.3)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#EF4444', fontWeight: '600' as const, fontSize: 13 }}>
+                          🗑️ Delete
+                        </Text>
                       </Pressable>
                     </View>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                    <Pressable onPress={() => reorder(index, index - 1)} style={btn()}>
-                      <Text style={btnTxt()}>↑</Text>
-                    </Pressable>
-                    <Pressable onPress={() => reorder(index, index + 1)} style={btn()}>
-                      <Text style={btnTxt()}>↓</Text>
-                    </Pressable>
-                  </View>
-                </View>
+                  )}
+                </Pressable>
               );
             }}
           />
@@ -560,6 +768,3 @@ export default function FloorManager({
     </Modal>
   );
 }
-
-const btn = () => ({ backgroundColor: '#333', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 });
-const btnTxt = () => ({ color: '#fff', fontWeight: '700' as const });

@@ -1,6 +1,6 @@
 // components/SitePlanner.tsx
 import React from 'react';
-import { Dimensions, Text, View } from 'react-native';
+import { Dimensions, View } from 'react-native';
 import Canvas from './Canvas';
 import Palette from './Palette';
 import { useSiteMapStore } from './state/useSiteMapStore';
@@ -57,22 +57,6 @@ export default function SitePlanner({
 
       {editable && !!effectiveImageUri && <Palette />}
       {!editable && !!effectiveImageUri && <View style={{ width: paletteWidth }} />}
-
-      {!editable && (
-        <View
-          style={{
-            position: 'absolute',
-            right: 12,
-            bottom: 12,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderRadius: 999,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-          }}
-        >
-          <Text style={{ color: 'white', fontWeight: '600' }}>Tap device to set status</Text>
-        </View>
-      )}
     </View>
   );
 }

@@ -1,8 +1,8 @@
 // app/create-service-call.tsx
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ServiceCallPriority, ServiceCallStatus } from '../hooks/useServiceCalls';
 import { supabase } from '../lib/supabase';
@@ -21,16 +21,61 @@ export default function CreateServiceCallScreen() {
   const [status, setStatus] = useState<ServiceCallStatus>('open');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [assignedEmployeeIds, setAssignedEmployeeIds] = useState<string[]>([]);
+  
+  // Employee state
+  const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
   
   // Date picker state
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Fetch employees
+  const fetchEmployees = useCallback(async () => {
+    try {
+      setLoadingEmployees(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setEmployees([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'employee')
+        .eq('manager_id', user.id)
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+      setEmployees(data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
+
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios'); // Keep open on iOS
+    setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
       setScheduledDate(selectedDate);
     }
+  };
+
+  const toggleEmployee = (employeeId: string) => {
+    setAssignedEmployeeIds(prev => {
+      if (prev.includes(employeeId)) {
+        return prev.filter(id => id !== employeeId);
+      } else {
+        return [...prev, employeeId];
+      }
+    });
   };
 
   const handleCreate = async () => {
@@ -65,6 +110,7 @@ export default function CreateServiceCallScreen() {
         status,
         notes: notes.trim() || null,
         scheduled_date: scheduledDate ? scheduledDate.toISOString() : null,
+        assigned_employee_ids: assignedEmployeeIds.length > 0 ? assignedEmployeeIds : null,
       });
 
       if (error) throw error;
@@ -252,6 +298,42 @@ export default function CreateServiceCallScreen() {
             </View>
           </View>
 
+          {/* Assign Employees - NEW SECTION */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Assign Employees (optional)</Text>
+
+            {loadingEmployees ? (
+              <ActivityIndicator style={{ marginTop: 12 }} />
+            ) : employees.length === 0 ? (
+              <Text style={styles.helpText}>
+                No employees available. Use the "+ Employee" button on the home screen to add team members.
+              </Text>
+            ) : (
+              <View style={styles.employeeChipsWrap}>
+                {employees.map((emp) => {
+                  const isSelected = assignedEmployeeIds.includes(emp.id);
+                  return (
+                    <Pressable
+                      key={emp.id}
+                      onPress={() => toggleEmployee(emp.id)}
+                      style={[
+                        styles.employeeChip,
+                        isSelected && styles.employeeChipActive,
+                      ]}
+                    >
+                      <Text style={[
+                        styles.employeeChipText,
+                        isSelected && styles.employeeChipTextActive
+                      ]}>
+                        {emp.full_name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
           {/* Notes */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Notes</Text>
@@ -305,6 +387,35 @@ const styles = StyleSheet.create({
   optionButtonActive: { backgroundColor: '#6D5DE7', borderColor: '#6D5DE7' },
   optionText: { fontSize: 14, fontWeight: '600', color: '#666' },
   optionTextActive: { color: '#fff' },
+
+  // Employee chips
+  employeeChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  employeeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f7',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  employeeChipActive: { backgroundColor: '#6D5DE7', borderColor: '#6D5DE7' },
+  employeeChipText: { fontSize: 14, fontWeight: '600', color: '#666' },
+  employeeChipTextActive: { color: '#fff' },
+
+  // Secondary button
+  secondaryButton: {
+    backgroundColor: '#f5f5f7',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  secondaryButtonText: { color: '#333', fontWeight: '600', fontSize: 14 },
+
+  // Help text
+  helpText: { fontSize: 14, color: '#666', marginTop: 8 },
 
   // Submit
   submitButton: { backgroundColor: '#6D5DE7', paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 20 },

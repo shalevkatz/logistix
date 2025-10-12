@@ -6,7 +6,10 @@ import FloorManager from '@/components/FloorManager';
 import SitePlanner from '@/components/SitePlanner';
 import { CablePoint, useSiteMapStore } from '@/components/state/useSiteMapStore';
 import { EditorMode } from '@/components/types';
+import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/lib/supabase';
+import { ensureSafePhoto } from '@/utils/image';
+import { toJpegBytes } from '@/utils/uploadFloorImage';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -56,6 +59,11 @@ export default function ProjectScreen() {
   const loadDevices = useSiteMapStore((s) => s.loadDevices);
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
   const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
+
+  // Get current user's profile to check role
+  const [userId, setUserId] = useState<string | null>(null);
+  const { profile } = useProfile(userId || undefined);
+  const isEmployee = profile?.role === 'employee';
   
   // Project Info Modal
   const [infoModalVisible, setInfoModalVisible] = useState(false);
@@ -158,6 +166,8 @@ const [cableToEditStatus, setCableToEditStatus] = useState<string | null>(null);
 
 const [statusModalVisible, setStatusModalVisible] = useState(false);
 const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null);
+const [devicePhotoUrl, setDevicePhotoUrl] = useState<string | null>(null);
+const [deviceIssueDescription, setDeviceIssueDescription] = useState<string | null>(null);
 
   const insets = useSafeAreaInsets();
   const cacheBusterRef = React.useRef(0);
@@ -225,43 +235,185 @@ const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null
   };
 
 // Handle device tap in read mode (for status change)
-const handleDeviceTapInReadMode = useCallback((deviceId: string) => {
+const handleDeviceTapInReadMode = useCallback(async (deviceId: string) => {
   console.log('🎯 Device tapped in read mode:', deviceId);
   setDeviceToEditStatus(deviceId);
+
+  // Fetch device data from database if it's a DB device
+  if (isDbId(deviceId)) {
+    try {
+      const { data: deviceData, error } = await supabase
+        .from('devices')
+        .select('installation_photo_url, issue_description')
+        .eq('id', deviceId)
+        .single();
+
+      if (!error && deviceData) {
+        setDevicePhotoUrl(deviceData.installation_photo_url);
+        setDeviceIssueDescription(deviceData.issue_description);
+      } else {
+        setDevicePhotoUrl(null);
+        setDeviceIssueDescription(null);
+      }
+    } catch (err) {
+      console.error('Error fetching device data:', err);
+      setDevicePhotoUrl(null);
+      setDeviceIssueDescription(null);
+    }
+  } else {
+    setDevicePhotoUrl(null);
+    setDeviceIssueDescription(null);
+  }
+
   setStatusModalVisible(true);
 }, []);
 
 // Handle status change
-const handleStatusChange = useCallback(async (status: 'installed' | 'pending' | 'cannot_install' | null) => {
+const handleStatusChange = useCallback(async (
+  status: 'installed' | 'pending' | 'cannot_install' | null,
+  photoUri?: string,
+  issueDescription?: string
+) => {
   if (!deviceToEditStatus) return;
 
   console.log('📊 Changing device status:', deviceToEditStatus, status);
 
+  // Update local state immediately
   const nodes = useSiteMapStore.getState().nodes;
-  const updatedNodes = nodes.map(n => 
+  const updatedNodes = nodes.map(n =>
     n.id === deviceToEditStatus ? { ...n, status } : n
   );
   useSiteMapStore.setState({ nodes: updatedNodes });
 
   if (isDbId(deviceToEditStatus)) {
     try {
-      const { error } = await supabase
+      let photoUrl: string | null = null;
+
+      // Upload photo if provided
+      if (photoUri && status === 'installed') {
+        console.log('📸 Uploading installation photo...');
+
+        try {
+          // Create a unique file name with simpler naming
+          const timestamp = Date.now();
+          const randomStr = Math.random().toString(36).substring(7);
+          const fileName = `${timestamp}_${randomStr}.jpg`;
+
+          // Compress and resize image first (max 1200px, 0.6 quality)
+          console.log('🔄 Compressing image...');
+          const compressedUri = await ensureSafePhoto(photoUri);
+          console.log('✅ Image compressed');
+
+          // Convert image to JPEG bytes using the same method as floor images
+          const bytes = await toJpegBytes(compressedUri);
+
+          // Validate file size
+          if (!bytes || bytes.byteLength < 1000) {
+            Alert.alert('Error', 'Invalid image file');
+            return;
+          }
+
+          console.log('📦 Image size:', bytes.byteLength, 'bytes');
+
+          // Upload with retry logic (same as floor images)
+          const uploadWithRetry = async (retries = 3): Promise<void> => {
+            try {
+              const { error: uploadError } = await supabase.storage
+                .from('device-photos')
+                .upload(fileName, bytes, {
+                  contentType: 'image/jpeg',
+                  upsert: true, // Allow overwriting if file exists
+                });
+
+              if (uploadError) throw uploadError;
+            } catch (err: any) {
+              const msg = String(err?.message ?? err);
+              const isNetworkError = /Network request failed/i.test(msg) || err?.name === 'StorageUnknownError';
+
+              if (retries > 0 && isNetworkError) {
+                const wait = 400 * (4 - retries); // 400ms, 800ms, 1200ms
+                console.log(`⏳ Retrying upload in ${wait}ms... (${retries} retries left)`);
+                await new Promise((resolve) => setTimeout(resolve, wait));
+                return uploadWithRetry(retries - 1);
+              }
+              throw err;
+            }
+          };
+
+          await uploadWithRetry();
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('device-photos')
+            .getPublicUrl(fileName);
+
+          photoUrl = urlData.publicUrl;
+          console.log('✅ Photo uploaded:', photoUrl);
+        } catch (uploadErr: any) {
+          console.error('❌ Error during photo upload:', uploadErr);
+          Alert.alert('Error', `Failed to upload photo: ${uploadErr?.message || 'Please try again'}`);
+          return;
+        }
+      }
+
+      // Get current user ID
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error('❌ Failed to get user:', userError);
+      }
+
+      console.log('👤 Current user:', user?.id);
+
+      // Prepare update data
+      const updateData: any = {
+        status,
+        status_updated_at: new Date().toISOString(),
+        updated_by: user?.id || null,
+      };
+
+      if (photoUrl) {
+        updateData.installation_photo_url = photoUrl;
+      }
+
+      if (issueDescription && status === 'cannot_install') {
+        updateData.issue_description = issueDescription;
+      }
+
+      console.log('📝 Update data:', JSON.stringify(updateData, null, 2));
+      console.log('🔍 Device ID to update:', deviceToEditStatus);
+
+      // Update device in database
+      const { data: updateResult, error } = await supabase
         .from('devices')
-        .update({ status })
-        .eq('id', deviceToEditStatus);
+        .update(updateData)
+        .eq('id', deviceToEditStatus)
+        .select();
+
+      console.log('📊 Update result:', updateResult);
+      console.log('❌ Update error:', error);
 
       if (error) {
         console.error('❌ Failed to update device status:', error);
-        Alert.alert('Error', 'Failed to update device status');
+        Alert.alert('Error', `Failed to update device status: ${error.message || JSON.stringify(error)}`);
       } else {
-        console.log('✅ Device status updated in database');
+        console.log('✅ Device status updated in database with metadata');
         await calculateTotalProjectProgress();
+
+        // Show success message
+        if (status === 'installed') {
+          Alert.alert('Success', 'Device marked as installed with photo confirmation');
+        } else if (status === 'cannot_install') {
+          Alert.alert('Success', 'Issue reported successfully');
+        }
       }
     } catch (err) {
       console.error('❌ Error updating device status:', err);
+      Alert.alert('Error', 'An unexpected error occurred');
     }
   }
 
+  setStatusModalVisible(false);
   setDeviceToEditStatus(null);
 }, [deviceToEditStatus, calculateTotalProjectProgress]);
 
@@ -579,21 +731,31 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
     setMode(m => (m === 'read' ? 'edit' : 'read'));
   }, [mode, saveCableChanges]);
 
+  // Load user ID on mount
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
+    })();
+  }, []);
+
   useEffect(() => {
     nav.setOptions?.({
       title: projectTitle,
       headerRight: () => (
-        <Pressable
-          onPress={handleModeToggle}
-          style={{ paddingHorizontal: 12, paddingVertical: 6 }}
-        >
-          <Text style={{ fontWeight: '600' }}>
-            {mode === 'read' ? 'Edit' : 'Done'}
-          </Text>
-        </Pressable>
+        !isEmployee ? (
+          <Pressable
+            onPress={handleModeToggle}
+            style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+          >
+            <Text style={{ fontWeight: '600' }}>
+              {mode === 'read' ? 'Edit' : 'Done'}
+            </Text>
+          </Pressable>
+        ) : null
       ),
     });
-  }, [nav, mode, projectTitle, handleModeToggle]);
+  }, [nav, mode, projectTitle, handleModeToggle, isEmployee]);
 
   // Initial load
   React.useEffect(() => {
@@ -798,58 +960,124 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         </View>
       </Modal>
 
-      {/* Progress Bar */}
-      {mode === 'read' && (
-      <View
-        style={{
-          position: 'absolute',
-          bottom: 100,
-          left: 20,
-          right: 20,
-          zIndex: 999,
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          borderRadius: 16,
-          padding: 16,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.25,
-          shadowRadius: 3.84,
-          elevation: 5,
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>
-            {projectCompleted ? '✅ Project Completed' : totalProjectProgress === 100 ? '🎉 Project Complete!' : 'Project Progress'}
-          </Text>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: projectCompleted ? '#22c55e' : '#6D5DE7' }}>
-            {totalProjectProgress}%
-          </Text>
-        </View>
-        
-        <View style={{ 
-          height: 10, 
-          backgroundColor: '#E5E7EB', 
-          borderRadius: 5, 
-          overflow: 'hidden' 
+{mode === 'read' && (
+  <View
+    style={{
+      position: 'absolute',
+      bottom: 100,
+      left: 16,
+      right: 16,
+      zIndex: 999,
+      backgroundColor: 'rgba(15, 23, 42, 0.95)', // Dark semi-transparent
+      borderRadius: 20,
+      padding: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
+      elevation: 8,
+      borderWidth: 1,
+      borderColor: 'rgba(139, 92, 246, 0.3)', // Subtle purple border
+    }}
+  >
+    {/* Header Row */}
+    <View style={{ 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      marginBottom: 12 
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: projectCompleted ? '#22c55e' : totalProjectProgress === 100 ? '#fbbf24' : '#8b5cf6',
+        }} />
+        <Text style={{ 
+          fontSize: 15, 
+          fontWeight: '700', 
+          color: '#fff',
+          letterSpacing: 0.3,
         }}>
-          <View style={{ 
-            height: '100%', 
-            width: `${totalProjectProgress}%`, 
-            backgroundColor: projectCompleted ? '#22c55e' : '#6D5DE7',
-            borderRadius: 5,
-          }} />
-        </View>
-        
-        <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 6 }}>
-          {projectCompleted
-            ? '✓ This project has been marked as completed'
-            : totalProjectProgress === 100 
-              ? '🌟 All items completed! Great work!' 
-              : `${completedDevices + completedCables} of ${totalDevices + totalCables} items completed (all floors)`
-          }
+          {projectCompleted ? 'Project Completed' : totalProjectProgress === 100 ? 'Ready to Complete' : 'Project Progress'}
         </Text>
       </View>
+      <Text style={{ 
+        fontSize: 24, 
+        fontWeight: '800', 
+        color: projectCompleted ? '#22c55e' : '#8b5cf6',
+        letterSpacing: -0.5,
+      }}>
+        {totalProjectProgress}%
+      </Text>
+    </View>
+    
+    {/* Progress Bar */}
+    <View style={{ 
+      height: 8, 
+      backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+      borderRadius: 4, 
+      overflow: 'hidden',
+      marginBottom: 10,
+    }}>
+      <View style={{ 
+        height: '100%', 
+        width: `${totalProjectProgress}%`, 
+        backgroundColor: projectCompleted ? '#22c55e' : '#8b5cf6',
+        borderRadius: 4,
+        shadowColor: projectCompleted ? '#22c55e' : '#8b5cf6',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+      }} />
+    </View>
+    
+    {/* Stats Row */}
+    <View style={{ 
+      flexDirection: 'row', 
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    }}>
+      <Text style={{ 
+        fontSize: 12, 
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontWeight: '500',
+      }}>
+        {projectCompleted
+          ? '✓ Marked as completed'
+          : totalProjectProgress === 100 
+            ? '🌟 All items installed!' 
+            : `${completedDevices + completedCables} of ${totalDevices + totalCables} completed`
+        }
+      </Text>
+      
+      {!projectCompleted && (
+        <View style={{ 
+          flexDirection: 'row', 
+          gap: 12,
+        }}>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.5)', fontWeight: '600' }}>
+              DEVICES
+            </Text>
+            <Text style={{ fontSize: 13, color: '#fff', fontWeight: '700' }}>
+              {completedDevices}/{totalDevices}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.5)', fontWeight: '600' }}>
+              CABLES
+            </Text>
+            <Text style={{ fontSize: 13, color: '#fff', fontWeight: '700' }}>
+              {completedCables}/{totalCables}
+            </Text>
+          </View>
+        </View>
       )}
+    </View>
+  </View>
+)}
 
       {/* Back Button */}
       <View
@@ -898,20 +1126,22 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           <Text style={{ color: 'white', fontWeight: '700' }}>ℹ️ Info</Text>
         </Pressable>
 
-        {/* Edit/Done Button */}
-        <Pressable
-          onPress={handleModeToggle}
-          style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            backgroundColor: 'rgba(162, 31, 249, 0.6)',
-            borderRadius: 20,
-          }}
-        >
-          <Text style={{ color: 'white', fontWeight: '700' }}>
-            {mode === 'read' ? '✏️ Edit' : '✓ Done'}
-          </Text>
-        </Pressable>
+        {/* Edit/Done Button - Only show for managers */}
+        {!isEmployee && (
+          <Pressable
+            onPress={handleModeToggle}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              backgroundColor: 'rgba(162, 31, 249, 0.6)',
+              borderRadius: 20,
+            }}
+          >
+            <Text style={{ color: 'white', fontWeight: '700' }}>
+              {mode === 'read' ? '✏️ Edit' : '✓ Done'}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Manage Floors Button - Only show when NOT in edit mode */}
@@ -976,7 +1206,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           אין עדיין תמונה לקומה הזו
         </Text>
       )}
-      <CableColorPicker />
+      <CableColorPicker editable={mode === 'edit'} />
       
       {/* Floor Manager Modal */}
       <FloorManager
@@ -986,20 +1216,26 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         existingFloors={dbFloors}
         onFloorSwitch={switchToFloor}
         projectId={projectId}
+        isEmployee={isEmployee}
       />
       
       <DeviceStatusSelector
         visible={statusModalVisible}
         currentStatus={
-          deviceToEditStatus 
+          deviceToEditStatus
             ? useSiteMapStore.getState().nodes.find(n => n.id === deviceToEditStatus)?.status ?? null
             : null
         }
         onClose={() => {
           setStatusModalVisible(false);
           setDeviceToEditStatus(null);
+          setDevicePhotoUrl(null);
+          setDeviceIssueDescription(null);
         }}
         onSelectStatus={handleStatusChange}
+        existingPhotoUrl={devicePhotoUrl}
+        existingIssueDescription={deviceIssueDescription}
+        isManager={!isEmployee}
       />
 
       <CableStatusSelector

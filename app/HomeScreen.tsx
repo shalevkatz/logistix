@@ -1,9 +1,10 @@
 // app/HomeScreen.tsx
 import { Href, useFocusEffect, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Linking, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AddEmployeeModal from '../components/AddEmployeeModal';
 import { useProfile } from '../hooks/useProfile';
 import { useProjects } from '../hooks/useProjects';
 import { getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel, ServiceCallStatus, useServiceCalls } from '../hooks/useServiceCalls';
@@ -26,7 +27,12 @@ export default function HomeScreen() {
   const [showCompleted, setShowCompleted] = useState(false);
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'projects' | 'service-calls'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'service-calls' | 'employees'>('projects');
+
+  // Add Employee state
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -46,6 +52,68 @@ export default function HomeScreen() {
   
   // Service calls filter state
   const [serviceCallStatusFilter, setServiceCallStatusFilter] = useState<'active' | 'open' | 'in_progress' | 'completed'>('active');
+
+  // Fetch employees function
+  const fetchEmployees = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      setLoadingEmployees(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, created_at')
+        .eq('role', 'employee')
+        .eq('manager_id', userId)
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+      setEmployees(data || []);
+    } catch (error: any) {
+      console.error('Error loading employees:', error);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  }, [userId]);
+
+  // Delete employee function
+  const deleteEmployee = async (employeeId: string, employeeName: string) => {
+    Alert.alert(
+      'Delete Employee',
+      `Remove "${employeeName}" from your team?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('profiles')
+                .delete()
+                .eq('id', employeeId);
+
+              if (error) throw error;
+              fetchEmployees();
+            } catch (error: any) {
+              Alert.alert('Error', 'Failed to delete employee');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Render delete action for employees
+  const renderEmployeeLeftActions = (employeeId: string, employeeName: string) => {
+    return (
+      <Pressable
+        style={styles.deleteButton}
+        onPress={() => deleteEmployee(employeeId, employeeName)}
+      >
+        <Text style={styles.deleteButtonText}>Delete</Text>
+      </Pressable>
+    );
+  };
 
   // Filter projects based on search query and completed status
   const filteredProjects = useMemo(() => {
@@ -76,16 +144,28 @@ export default function HomeScreen() {
     [projects]
   );
   
+  // Filter employees
+  const filteredEmployees = useMemo(() => {
+    if (!searchQuery) return employees;
+    
+    const query = searchQuery.toLowerCase();
+    return employees.filter(emp =>
+      emp.full_name.toLowerCase().includes(query) ||
+      emp.email.toLowerCase().includes(query)
+    );
+  }, [employees, searchQuery]);
+
+  // Count employees
+  const employeesCount = useMemo(() => employees.length, [employees]);
+  
   // Filter service calls
   const filteredServiceCalls = useMemo(() => {
     let filtered = serviceCalls;
 
     // Filter by status
     if (serviceCallStatusFilter === 'active') {
-      // Show only open and in_progress (exclude completed)
       filtered = filtered.filter(call => call.status === 'open' || call.status === 'in_progress');
     } else {
-      // For specific status filters (open, in_progress, completed)
       filtered = filtered.filter(call => call.status === serviceCallStatusFilter);
     }
 
@@ -116,7 +196,8 @@ export default function HomeScreen() {
     React.useCallback(() => {
       refetch();
       refetchServiceCalls();
-    }, [refetch, refetchServiceCalls])
+      fetchEmployees();
+    }, [refetch, refetchServiceCalls, fetchEmployees])
   );
 
   const [refreshing, setRefreshing] = useState(false);
@@ -125,8 +206,10 @@ export default function HomeScreen() {
     setRefreshing(true);
     if (activeTab === 'projects') {
       await refetch();
-    } else {
+    } else if (activeTab === 'service-calls') {
       await refetchServiceCalls();
+    } else if (activeTab === 'employees') {
+      await fetchEmployees();
     }
     setRefreshing(false);
   };
@@ -222,7 +305,6 @@ export default function HomeScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // First, fetch all floors associated with this project to get image paths
               const { data: floors, error: floorsError } = await supabase
                 .from('floors')
                 .select('image_path')
@@ -232,25 +314,22 @@ export default function HomeScreen() {
                 console.error('Error fetching floors:', floorsError);
               }
 
-              // Delete images from storage bucket if they exist
               if (floors && floors.length > 0) {
                 const imagePaths = floors
                   .map(floor => floor.image_path)
-                  .filter(path => path != null); // Remove null/undefined paths
+                  .filter(path => path != null);
 
                 if (imagePaths.length > 0) {
                   const { error: storageError } = await supabase.storage
-                    .from('floor-plans') // Replace 'floor-plans' with your actual bucket name
+                    .from('floor-plans')
                     .remove(imagePaths);
 
                   if (storageError) {
                     console.error('Error deleting images from storage:', storageError);
-                    // Continue with project deletion even if image deletion fails
                   }
                 }
               }
 
-              // Delete the project (this should cascade delete floors if FK is set up)
               const { error: projectError } = await supabase
                 .from('projects')
                 .delete()
@@ -259,7 +338,6 @@ export default function HomeScreen() {
               if (projectError) {
                 Alert.alert('Error', 'Failed to delete project: ' + projectError.message);
               } else {
-                // Refresh the projects list
                 await refetch();
               }
             } catch (err) {
@@ -298,7 +376,7 @@ export default function HomeScreen() {
 
   // Render right swipe actions for service calls (complete button)
   const renderServiceCallRightActions = (callId: string, callTitle: string, status: ServiceCallStatus) => {
-    if (status === 'completed') return null; // Don't show complete action if already completed
+    if (status === 'completed') return null;
     
     return (
       <Pressable
@@ -310,7 +388,6 @@ export default function HomeScreen() {
     );
   };
 
-  // ✅ Open the full project page (fetches details by id)
   const openProject = async (id: string) => {
     const { data, error } = await supabase
       .from('floors')
@@ -348,7 +425,7 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Error / Empty / List */}
+      {/* Tab Content */}
       {activeTab === 'projects' ? (
         // PROJECTS TAB
         error ? (
@@ -359,19 +436,16 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         ) : projects.length === 0 ? (
-          // Empty state
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyTitle}>Let's start your first project</Text>
             <Text style={styles.emptySubtitle}>
               Create a project to track tasks, hours, and reports.
             </Text>
-
             <Pressable onPress={() => router.push('/create-project')} style={styles.bigAddCircle}>
               <Text style={styles.bigAddText}>+</Text>
             </Pressable>
           </View>
         ) : (
-          // Projects list
           <View style={{ flex: 1 }}>
             <View style={styles.summaryRow}>
               <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
@@ -384,7 +458,6 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Toggle between Active and Completed */}
             <View style={styles.toggleContainer}>
               <Pressable 
                 onPress={() => setShowCompleted(false)}
@@ -404,7 +477,6 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {/* Search Bar */}
             <View style={styles.searchContainer}>
               <TextInput
                 style={styles.searchInput}
@@ -516,7 +588,7 @@ export default function HomeScreen() {
             )}
           </View>
         )
-      ) : (
+      ) : activeTab === 'service-calls' ? (
         // SERVICE CALLS TAB
         serviceCallsError ? (
           <View style={styles.errorBox}>
@@ -537,7 +609,6 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={{ flex: 1 }}>
-            {/* Service Calls Summary */}
             <View style={styles.summaryRow}>
               <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
                 <Text style={styles.cardNum}>{serviceCallStatusCounts.active}</Text>
@@ -549,7 +620,6 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Status Filter */}
             <View style={styles.serviceCallFilterTabs}>
               {(['active', 'open', 'in_progress', 'completed'] as const).map(status => (
                 <Pressable
@@ -564,7 +634,6 @@ export default function HomeScreen() {
               ))}
             </View>
 
-            {/* Search Bar */}
             <View style={styles.searchContainer}>
               <TextInput
                 style={styles.searchInput}
@@ -649,7 +718,102 @@ export default function HomeScreen() {
             )}
           </View>
         )
-      )}
+      ) : activeTab === 'employees' ? (
+        // EMPLOYEES TAB
+        loadingEmployees ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#6D5DE7" />
+          </View>
+        ) : employees.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyIcon}>👷</Text>
+            <Text style={styles.emptyTitle}>No employees yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Add your first team member to get started
+            </Text>
+            <Pressable onPress={() => setShowAddEmployeeModal(true)} style={styles.emptyButton}>
+              <Text style={styles.emptyButtonText}>+ Add Employee</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={{ flex: 1 }}>
+            {/* Employee Stats */}
+            <View style={styles.summaryRow}>
+              <View style={[styles.card, styles.employeeStatCard]}>
+                <Text style={styles.cardNum}>{employeesCount}</Text>
+                <Text style={styles.cardLabel}>Total Employees</Text>
+              </View>
+              <View style={[styles.card, styles.employeeStatCard]}>
+                <Text style={styles.cardNum}>{filteredEmployees.length}</Text>
+                <Text style={styles.cardLabel}>
+                  {searchQuery ? 'Search Results' : 'Active'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search employees..."
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.listHeaderRow}>
+              <Text style={styles.sectionTitle}>
+                {searchQuery 
+                  ? `Results (${filteredEmployees.length})` 
+                  : 'All Employees'
+                }
+              </Text>
+              <Pressable onPress={() => setShowAddEmployeeModal(true)} style={styles.newProjectBtn}>
+                <Text style={styles.newProjectBtnText}>+ Add</Text>
+              </Pressable>
+            </View>
+
+            {filteredEmployees.length === 0 ? (
+              <View style={styles.emptySearchWrap}>
+                <Text style={styles.emptySearchText}>
+                  No employees found for "{searchQuery}"
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredEmployees}
+                keyExtractor={(item) => item.id}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                contentContainerStyle={{ gap: 12, paddingBottom: 100 }}
+                renderItem={({ item }) => (
+                  <Swipeable
+                    renderLeftActions={() => renderEmployeeLeftActions(item.id, item.full_name)}
+                    overshootLeft={false}
+                  >
+                    <Pressable style={styles.employeeCard}>
+                      <View style={styles.employeeAvatar}>
+                        <Text style={styles.employeeAvatarText}>
+                          {item.full_name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.employeeInfo}>
+                        <Text style={styles.employeeName}>{item.full_name}</Text>
+                        <Text style={styles.employeeEmail}>{item.email}</Text>
+                        <Text style={styles.employeeDate}>
+                          Added {new Date(item.created_at).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </Swipeable>
+                )}
+              />
+            )}
+          </View>
+        )
+      ) : null}
 
       {/* Bottom Tab Bar */}
       <View style={styles.bottomTabBar}>
@@ -674,7 +838,28 @@ export default function HomeScreen() {
           <Text style={[styles.tabIcon, activeTab === 'service-calls' && styles.tabIconActive]}>📞</Text>
           <Text style={[styles.tabLabel, activeTab === 'service-calls' && styles.tabLabelActive]}>Service Calls</Text>
         </Pressable>
+
+        <Pressable
+          onPress={() => {
+            setActiveTab('employees');
+            setSearchQuery('');
+          }}
+          style={[styles.tabButton, activeTab === 'employees' && styles.tabButtonActive]}
+        >
+          <Text style={[styles.tabIcon, activeTab === 'employees' && styles.tabIconActive]}>👷</Text>
+          <Text style={[styles.tabLabel, activeTab === 'employees' && styles.tabLabelActive]}>Employees</Text>
+        </Pressable>
       </View>
+
+      {/* Add Employee Modal */}
+      <AddEmployeeModal
+        visible={showAddEmployeeModal}
+        onClose={() => setShowAddEmployeeModal(false)}
+        onSuccess={() => {
+          setShowAddEmployeeModal(false);
+          fetchEmployees();
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -2,6 +2,7 @@
 import { supabase } from '@/lib/supabase';
 import { ensureSafePhoto } from '@/utils/image';
 import { uploadFloorImage } from '@/utils/uploadFloorImage';
+import { useLanguage } from '@/contexts/LanguageContext';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
@@ -38,6 +39,7 @@ export default function FloorManager({
   projectId = null,
   isEmployee = false,
 }: Props) {
+  const { t } = useLanguage();
   const setLocalFloors = useSiteMapStore((s) => s.setLocalFloors);
   const setFloorName = useSiteMapStore((s) => s.setFloorName);
   const setAllFloorCanvases = useSiteMapStore((s) => s.setAllFloorCanvases);
@@ -477,9 +479,9 @@ export default function FloorManager({
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <View>
-              <Text style={{ color: 'white', fontSize: 24, fontWeight: '800' as const }}>Manage Floors</Text>
+              <Text style={{ color: 'white', fontSize: 24, fontWeight: '800' as const }}>{t('floors.manageFloors')}</Text>
               <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 2 }}>
-                {floors.length} {floors.length === 1 ? 'floor' : 'floors'}
+                {floors.length} {floors.length === 1 ? t('floors.floor') : t('floors.floors')}
               </Text>
             </View>
             <Pressable
@@ -519,7 +521,7 @@ export default function FloorManager({
               }}
             >
               <Text style={{ color: 'white', fontSize: 18, fontWeight: '600' as const }}>+</Text>
-              <Text style={{ color: 'white', fontWeight: '700' as const, fontSize: 15 }}>Add New Floor</Text>
+              <Text style={{ color: 'white', fontWeight: '700' as const, fontSize: 15 }}>{t('floors.addNewFloor')}</Text>
             </Pressable>
           )}
 
@@ -578,7 +580,7 @@ export default function FloorManager({
                             value={renameText}
                             onChangeText={setRenameText}
                             autoFocus
-                            placeholder="Floor name"
+                            placeholder={t('floors.floorNamePlaceholder')}
                             placeholderTextColor="#6b7280"
                             onSubmitEditing={() => commitRename(item.id)}
                             onBlur={() => commitRename(item.id)}
@@ -611,7 +613,7 @@ export default function FloorManager({
                               marginTop: 2,
                               fontWeight: '500' as const,
                             }}>
-                              Currently viewing
+                              {t('floors.currentlyViewing')}
                             </Text>
                           )}
                         </View>
@@ -696,7 +698,7 @@ export default function FloorManager({
                           <ActivityIndicator size="small" color="#10B981" />
                         ) : (
                           <Text style={{ color: '#10B981', fontWeight: '600' as const, fontSize: 13 }}>
-                            📷 Image
+                            {t('floors.image')}
                           </Text>
                         )}
                       </Pressable>
@@ -720,7 +722,7 @@ export default function FloorManager({
                           }}
                         >
                           <Text style={{ color: '#A78BFA', fontWeight: '600' as const, fontSize: 13 }}>
-                            ✏️ Rename
+                            {t('floors.rename')}
                           </Text>
                         </Pressable>
                       )}
@@ -729,8 +731,8 @@ export default function FloorManager({
                         onPress={(e) => {
                           e.stopPropagation();
                           Alert.alert(
-                            'Delete Floor',
-                            `Are you sure you want to delete "${item.name}"? This will remove all devices and cables on this floor.`,
+                            t('floors.deleteFloorTitle'),
+                            t('floors.deleteFloorConfirm', { name: item.name }),
                             [
                               { text: 'Cancel', style: 'cancel' },
                               {
@@ -754,7 +756,7 @@ export default function FloorManager({
                         }}
                       >
                         <Text style={{ color: '#EF4444', fontWeight: '600' as const, fontSize: 13 }}>
-                          🗑️ Delete
+                          {t('floors.delete')}
                         </Text>
                       </Pressable>
                     </View>

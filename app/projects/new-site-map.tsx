@@ -1,5 +1,6 @@
 // app/projects/new-site-map.tsx
 import CableColorPicker from '@/components/CableColorPicker';
+import DeviceColorPicker from '@/components/DeviceColorPicker';
 import { useSiteMapStore } from '@/components/state/useSiteMapStore';
 import { uploadFloorImage } from '@/utils/uploadFloorImage';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +10,7 @@ import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import FloorManager from '../../components/FloorManager';
 import SitePlanner from '../../components/SitePlanner';
 import type { Cable, DeviceNode } from '../../components/state/useSiteMapStore';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
 import { ensureSafePhoto } from '../../utils/image';
 
@@ -29,6 +31,7 @@ type Payload = {
 const makeId = () => `floor_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
 export default function NewSiteMap() {
+  const { t } = useLanguage();
   const { payload } = useLocalSearchParams<{ payload: string }>();
   const form = JSON.parse(payload ?? '{}') as Payload;
 
@@ -94,7 +97,7 @@ export default function NewSiteMap() {
       
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow photo library access to pick an image.');
+        Alert.alert(t('sitemap.permissionNeeded'), t('sitemap.permissionMessage'));
         return;
       }
 
@@ -111,7 +114,7 @@ export default function NewSiteMap() {
 
       const uri: string | undefined = res?.assets?.[0]?.uri ?? (typeof res?.uri === 'string' ? res.uri : undefined);
       if (!uri) {
-        Alert.alert('Image Error', 'No image selected. Please try again.');
+        Alert.alert(t('sitemap.imageError'), t('sitemap.noImageSelected'));
         return;
       }
 
@@ -119,7 +122,7 @@ export default function NewSiteMap() {
 
       const processedUri = await ensureSafePhoto(uri);
       if (!processedUri) {
-        Alert.alert('Image Error', 'Could not process image. Please choose a different photo.');
+        Alert.alert(t('sitemap.imageError'), t('sitemap.imageFailed'));
         return;
       }
 
@@ -143,7 +146,7 @@ export default function NewSiteMap() {
 
     } catch (e: any) {
       console.error('[pickImage] Error:', e);
-      Alert.alert('Image Error', e?.message ?? 'Failed to pick image.');
+      Alert.alert(t('sitemap.imageError'), e?.message ?? 'Failed to pick image.');
     }
   };
 
@@ -154,7 +157,7 @@ export default function NewSiteMap() {
 
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
-      if (!user) throw new Error('Not signed in');
+      if (!user) throw new Error(t('sitemap.errorNotSignedIn'));
 
       console.log('👤 User ID:', user.id);
       console.log('📝 Form data:', form);
@@ -237,6 +240,8 @@ export default function NewSiteMap() {
             y: n.y,
             rotation: n.rotation,
             scale: n.scale,
+            color: n.color,
+            parent_rack_id: n.parentRackId || null,
           }));
           const { error: devErr } = await supabase.from('devices').insert(devicePayload);
           if (devErr) {
@@ -295,12 +300,12 @@ export default function NewSiteMap() {
       // Finish
       clearAll();
       setSafeUri(null);
-      Alert.alert('Success', 'Project and site map created successfully!');
+      Alert.alert(t('sitemap.success'), t('sitemap.successMessage'));
       router.replace('/');
 
     } catch (e: any) {
       console.error('❌ Error in saveAll:', e);
-      Alert.alert('Error', `Failed to save project: ${e?.message || 'Unknown error'}`);
+      Alert.alert(t('sitemap.error'), `${t('sitemap.errorSaving')}: ${e?.message || 'Unknown error'}`);
     } finally {
       setBusy(false);
     }
@@ -309,10 +314,10 @@ export default function NewSiteMap() {
   return (
     <View style={{ flex: 1, padding: 16, backgroundColor: '#0b1020' }}>
       <Text style={{ color: 'white', fontSize: 22, fontWeight: 800 as const, marginBottom: 6 }}>
-        Add Site Map
+        {t('sitemap.title')}
       </Text>
       <Text style={{ color: '#a3a3a3', marginBottom: 12 }}>
-        Step 2 of 2 — Add a site map (we optimize large photos automatically).
+        {t('sitemap.subtitle')}
       </Text>
 
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
@@ -325,14 +330,14 @@ export default function NewSiteMap() {
             borderRadius: 12,
           }}
         >
-          <Text style={{ color: 'white' }}>{safeUri ? 'Change Image' : 'Upload Image'}</Text>
+          <Text style={{ color: 'white' }}>{safeUri ? t('sitemap.changeImage') : t('sitemap.uploadImage')}</Text>
         </Pressable>
 
         <Pressable
           onPress={() => {
-            Alert.alert('Clear everything?', 'This removes all placed devices and cables.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Clear', style: 'destructive', onPress: clearAll },
+            Alert.alert(t('sitemap.clearConfirm'), t('sitemap.clearConfirmMessage'), [
+              { text: t('common.cancel'), style: 'cancel' },
+              { text: t('sitemap.clear'), style: 'destructive', onPress: clearAll },
             ]);
           }}
           style={{
@@ -342,13 +347,14 @@ export default function NewSiteMap() {
             borderRadius: 12,
           }}
         >
-          <Text style={{ color: 'white' }}>Clear</Text>
+          <Text style={{ color: 'white' }}>{t('sitemap.clear')}</Text>
         </Pressable>
       </View>
 
       <View style={{ flex: 1, position: 'relative' }}>
         <SitePlanner imageUrl={safeUri} editable={true} />
         <CableColorPicker editable={true} />
+        <DeviceColorPicker editable={true} />
       </View>
 
       <View style={{ marginTop: 10, alignItems: 'center' }}>
@@ -361,7 +367,7 @@ export default function NewSiteMap() {
             borderRadius: 999,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: 700 as const }}>Manage Floors</Text>
+          <Text style={{ color: 'white', fontWeight: 700 as const }}>{t('sitemap.manageFloors')}</Text>
         </Pressable>
       </View>
 
@@ -383,7 +389,7 @@ export default function NewSiteMap() {
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: 'white' }}>Back</Text>
+          <Text style={{ color: 'white' }}>{t('sitemap.back')}</Text>
         </Pressable>
         <Pressable
           onPress={saveAll}
@@ -401,7 +407,7 @@ export default function NewSiteMap() {
             <ActivityIndicator />
           ) : (
             <Text style={{ color: 'white', fontWeight: 700 as const }}>
-              Save & Create Project
+              {t('sitemap.saveAndCreate')}
             </Text>
           )}
         </Pressable>

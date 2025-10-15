@@ -23,16 +23,17 @@ function distPointToSeg(px: number, py: number, ax: number, ay: number, bx: numb
   return Math.hypot(px - cx, py - cy);
 }
 
-type Props = { 
-  width: number; 
-  height: number; 
-  imageUri: string | null; 
+type Props = {
+  width: number;
+  height: number;
+  imageUri: string | null;
   editable?: boolean;
   onDeviceTapInReadMode?: (deviceId: string) => void;
   onCableTapInReadMode?: (cableId: string) => void;
+  onDeviceSelect?: (deviceId: string) => void;
 };
 
-export default function Canvas({ width, height, imageUri, editable, onDeviceTapInReadMode, onCableTapInReadMode }: Props) {
+export default function Canvas({ width, height, imageUri, editable, onDeviceTapInReadMode, onCableTapInReadMode, onDeviceSelect }: Props) {
   const {
     nodes,
     cables,
@@ -251,9 +252,11 @@ export default function Canvas({ width, height, imageUri, editable, onDeviceTapI
                   y={n.y}
                   selected={selectedId === n.id}
                   type={n.type}
+                  color={n.color}
                   editable={editable}
                   status={n.status ?? null}
                   onTapInReadMode={onDeviceTapInReadMode}
+                  onSelect={onDeviceSelect}
                 />
               ))}
             </View>

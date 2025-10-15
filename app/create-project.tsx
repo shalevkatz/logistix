@@ -19,12 +19,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
+import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 
 // -----------------------------
 // Schema & Types
 // -----------------------------
-const projectSchema = z.object({
+const createProjectSchema = () => z.object({
   title: z.string().min(2, 'Project name is too short'),
   client_name: z.string().optional(),
   phone_number: z.string().optional(),
@@ -36,7 +37,7 @@ const projectSchema = z.object({
   start_date: z.date().optional(),
   due_date: z.date().optional(),
 });
-type ProjectForm = z.infer<typeof projectSchema>;
+type ProjectForm = z.infer<ReturnType<typeof createProjectSchema>>;
 
 // -----------------------------
 // Small helper components
@@ -70,10 +71,12 @@ const DateField = ({
   label,
   value,
   onChange,
+  t,
 }: {
   label: string;
   value?: Date;
   onChange: (d?: Date) => void;
+  t: (key: string) => string;
 }) => {
   const [open, setOpen] = useState(false);
   const [tempDate, setTempDate] = useState<Date | undefined>(value);
@@ -98,7 +101,7 @@ const DateField = ({
       <Text style={styles.label}>{label}</Text>
       <Pressable style={styles.dateButton} onPress={handleOpen}>
         <Text style={[styles.dateButtonText, !value && { color: '#999' }]}>
-          {value ? value.toDateString() : 'Select date (optional)'}
+          {value ? value.toDateString() : t('createProject.selectDate')}
         </Text>
         <Text style={styles.dateIcon}>📅</Text>
       </Pressable>
@@ -113,11 +116,11 @@ const DateField = ({
           <Pressable style={styles.datePickerModalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.datePickerHeader}>
               <Pressable onPress={handleCancel}>
-                <Text style={styles.datePickerCancelText}>Cancel</Text>
+                <Text style={styles.datePickerCancelText}>{t('createProject.cancel')}</Text>
               </Pressable>
               <Text style={styles.datePickerTitle}>{label}</Text>
               <Pressable onPress={handleDone}>
-                <Text style={styles.datePickerDoneText}>Done</Text>
+                <Text style={styles.datePickerDoneText}>{t('createProject.done')}</Text>
               </Pressable>
             </View>
             <DateTimePicker
@@ -152,6 +155,7 @@ const DateField = ({
 // Screen
 // -----------------------------
 export default function CreateProjectScreen() {
+  const { t } = useLanguage();
   const [submitting, setSubmitting] = useState(false);
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
@@ -162,7 +166,7 @@ export default function CreateProjectScreen() {
     formState: { errors },
     reset,
   } = useForm<ProjectForm>({
-    resolver: zodResolver(projectSchema),
+    resolver: zodResolver(createProjectSchema()),
     defaultValues: {
       title: '',
       client_name: '',
@@ -227,7 +231,7 @@ const fetchEmployees = useCallback(async () => {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth.user;
       if (!user) {
-        Alert.alert('Not signed in', 'Please log in again.');
+        Alert.alert(t('createProject.notSignedIn'), t('createProject.pleaseLogIn'));
         return;
       }
 
@@ -252,7 +256,7 @@ const fetchEmployees = useCallback(async () => {
       });
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Error', e?.message ?? 'Failed to continue.');
+      Alert.alert(t('createProject.error'), e?.message ?? t('createProject.failedToContinue'));
     } finally {
       setSubmitting(false);
     }
@@ -264,9 +268,9 @@ const fetchEmployees = useCallback(async () => {
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← Cancel</Text>
+            <Text style={styles.backButtonText}>← {t('createProject.cancel')}</Text>
           </Pressable>
-          <Text style={styles.title}>New Project</Text>
+          <Text style={styles.title}>{t('createProject.title')}</Text>
           <View style={{ width: 80 }} />
         </View>
 
@@ -274,14 +278,14 @@ const fetchEmployees = useCallback(async () => {
         <View style={styles.form}>
           {/* Project Name */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Project name *</Text>
+            <Text style={styles.label}>{t('createProject.projectNameRequired')}</Text>
             <Controller
               control={control}
               name="title"
               render={({ field: { value, onChange, onBlur } }) => (
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., Mall CCTV install"
+                  placeholder={t('createProject.projectNamePlaceholder')}
                   placeholderTextColor="#999"
                   value={value}
                   onChangeText={onChange}
@@ -289,19 +293,19 @@ const fetchEmployees = useCallback(async () => {
                 />
               )}
             />
-            {errors.title && <Text style={styles.errorText}>{errors.title.message}</Text>}
+            {errors.title && <Text style={styles.errorText}>{t('createProject.projectNameError')}</Text>}
           </View>
 
           {/* Client Name */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Client</Text>
+            <Text style={styles.label}>{t('createProject.client')}</Text>
             <Controller
               control={control}
               name="client_name"
               render={({ field: { value, onChange, onBlur } }) => (
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., Blue Tower Ltd."
+                  placeholder={t('createProject.clientPlaceholder')}
                   placeholderTextColor="#999"
                   value={value}
                   onChangeText={onChange}
@@ -313,14 +317,14 @@ const fetchEmployees = useCallback(async () => {
 
           {/* Phone Number */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Phone Number</Text>
+            <Text style={styles.label}>{t('createProject.phoneNumber')}</Text>
             <Controller
               control={control}
               name="phone_number"
               render={({ field: { value, onChange, onBlur } }) => (
                 <TextInput
                   style={styles.input}
-                  placeholder="555-1234"
+                  placeholder={t('createProject.phonePlaceholder')}
                   placeholderTextColor="#999"
                   keyboardType="phone-pad"
                   value={value}
@@ -333,14 +337,14 @@ const fetchEmployees = useCallback(async () => {
 
           {/* Location */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Location</Text>
+            <Text style={styles.label}>{t('createProject.location')}</Text>
             <Controller
               control={control}
               name="location"
               render={({ field: { value, onChange, onBlur } }) => (
                 <TextInput
                   style={styles.input}
-                  placeholder="City / Address"
+                  placeholder={t('createProject.locationPlaceholder')}
                   placeholderTextColor="#999"
                   value={value}
                   onChangeText={onChange}
@@ -352,14 +356,14 @@ const fetchEmployees = useCallback(async () => {
 
           {/* Budget */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Budget (optional)</Text>
+            <Text style={styles.label}>{t('createProject.budget')}</Text>
             <Controller
               control={control}
               name="budget"
               render={({ field: { value, onChange, onBlur } }) => (
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g., 25000"
+                  placeholder={t('createProject.budgetPlaceholder')}
                   placeholderTextColor="#999"
                   keyboardType="numeric"
                   value={value !== undefined ? String(value) : ''}
@@ -373,7 +377,7 @@ const fetchEmployees = useCallback(async () => {
 
           {/* Priority */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Priority</Text>
+            <Text style={styles.label}>{t('createProject.priority')}</Text>
             <Controller
               control={control}
               name="priority"
@@ -390,7 +394,7 @@ const fetchEmployees = useCallback(async () => {
                 control={control}
                 name="start_date"
                 render={({ field: { value, onChange } }) => (
-                  <DateField label="Start date" value={value} onChange={onChange} />
+                  <DateField label={t('createProject.startDate')} value={value} onChange={onChange} t={t} />
                 )}
               />
             </View>
@@ -399,24 +403,24 @@ const fetchEmployees = useCallback(async () => {
                 control={control}
                 name="due_date"
                 render={({ field: { value, onChange } }) => (
-                  <DateField label="Due date" value={value} onChange={onChange} />
+                  <DateField label={t('createProject.dueDate')} value={value} onChange={onChange} t={t} />
                 )}
               />
             </View>
           </View>
 
-         
+
 
 {/* Employees */}
 <View style={styles.fieldGroup}>
-  <Text style={styles.label}>Assign employees</Text>
+  <Text style={styles.label}>{t('createProject.assignEmployees')}</Text>
 
   {loadingEmployees ? (
     <ActivityIndicator style={{ marginTop: 12 }} />
   ) : employees.length === 0 ? (
     <View>
       <Text style={styles.helpText}>
-        No employees available. Use the "+ Employee" button on the home screen to add team members.
+        {t('createProject.noEmployees')}
       </Text>
     </View>
   ) : (
@@ -459,7 +463,7 @@ const fetchEmployees = useCallback(async () => {
 
           {/* Description */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>{t('createProject.description')}</Text>
             <Controller
               control={control}
               name="description"
@@ -468,7 +472,7 @@ const fetchEmployees = useCallback(async () => {
                   style={[styles.input, styles.textArea]}
                   multiline
                   numberOfLines={4}
-                  placeholder="Scope, notes, requirements, etc."
+                  placeholder={t('createProject.descriptionPlaceholder')}
                   placeholderTextColor="#999"
                   value={value}
                   onChangeText={onChange}
@@ -487,15 +491,15 @@ const fetchEmployees = useCallback(async () => {
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.submitButtonText}>Continue • Add site map</Text>
+              <Text style={styles.submitButtonText}>{t('createProject.continue')}</Text>
             )}
           </Pressable>
 
           {/* Pro Tip */}
           <View style={styles.proTipBox}>
-            <Text style={styles.proTipTitle}>💡 Pro tip</Text>
+            <Text style={styles.proTipTitle}>💡 {t('createProject.proTip')}</Text>
             <Text style={styles.proTipText}>
-              You can start with just a name and fill the rest later.
+              {t('createProject.proTipMessage')}
             </Text>
           </View>
         </View>

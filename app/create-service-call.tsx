@@ -4,11 +4,13 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLanguage } from '../contexts/LanguageContext';
 import { ServiceCallPriority, ServiceCallStatus } from '../hooks/useServiceCalls';
 import { supabase } from '../lib/supabase';
 
 export default function CreateServiceCallScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
 
   // Form state
   const [title, setTitle] = useState('');
@@ -22,11 +24,11 @@ export default function CreateServiceCallScreen() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [assignedEmployeeIds, setAssignedEmployeeIds] = useState<string[]>([]);
-  
+
   // Employee state
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
-  
+
   // Date picker state
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -81,11 +83,11 @@ export default function CreateServiceCallScreen() {
   const handleCreate = async () => {
     // Validation
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title');
+      Alert.alert(t('createServiceCall.errorTitle'), t('createServiceCall.errorEmptyTitle'));
       return;
     }
     if (!customerName.trim()) {
-      Alert.alert('Error', 'Please enter customer name');
+      Alert.alert(t('createServiceCall.errorTitle'), t('createServiceCall.errorEmptyCustomer'));
       return;
     }
 
@@ -94,7 +96,7 @@ export default function CreateServiceCallScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        Alert.alert('Error', 'You must be logged in');
+        Alert.alert(t('createServiceCall.errorTitle'), t('createServiceCall.errorNotLoggedIn'));
         return;
       }
 
@@ -115,11 +117,11 @@ export default function CreateServiceCallScreen() {
 
       if (error) throw error;
 
-      Alert.alert('Success', 'Service call created successfully!', [
+      Alert.alert(t('createServiceCall.success'), t('createServiceCall.successMessage'), [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to create service call');
+      Alert.alert(t('createServiceCall.errorTitle'), error.message || t('createServiceCall.errorFailed'));
     } finally {
       setLoading(false);
     }
@@ -131,9 +133,9 @@ export default function CreateServiceCallScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>← Cancel</Text>
+            <Text style={styles.backButtonText}>← {t('createServiceCall.cancel')}</Text>
           </Pressable>
-          <Text style={styles.title}>New Service Call</Text>
+          <Text style={styles.title}>{t('createServiceCall.title')}</Text>
           <View style={{ width: 80 }} />
         </View>
 
@@ -141,24 +143,24 @@ export default function CreateServiceCallScreen() {
         <View style={styles.form}>
           {/* Title */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Title *</Text>
+            <Text style={styles.label}>{t('createServiceCall.titleField')}</Text>
             <TextInput
               style={styles.input}
               value={title}
               onChangeText={setTitle}
-              placeholder="e.g., Faulty outlet in kitchen"
+              placeholder={t('createServiceCall.titlePlaceholder')}
               placeholderTextColor="#999"
             />
           </View>
 
           {/* Description */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>{t('createServiceCall.description')}</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={description}
               onChangeText={setDescription}
-              placeholder="Additional details about the issue..."
+              placeholder={t('createServiceCall.descriptionPlaceholder')}
               placeholderTextColor="#999"
               multiline
               numberOfLines={4}
@@ -167,24 +169,24 @@ export default function CreateServiceCallScreen() {
 
           {/* Customer Name */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Customer Name *</Text>
+            <Text style={styles.label}>{t('createServiceCall.customerName')}</Text>
             <TextInput
               style={styles.input}
               value={customerName}
               onChangeText={setCustomerName}
-              placeholder="John Doe"
+              placeholder={t('createServiceCall.customerNamePlaceholder')}
               placeholderTextColor="#999"
             />
           </View>
 
           {/* Customer Phone */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Customer Phone</Text>
+            <Text style={styles.label}>{t('createServiceCall.customerPhone')}</Text>
             <TextInput
               style={styles.input}
               value={customerPhone}
               onChangeText={setCustomerPhone}
-              placeholder="555-1234"
+              placeholder={t('createServiceCall.customerPhonePlaceholder')}
               placeholderTextColor="#999"
               keyboardType="phone-pad"
             />
@@ -192,12 +194,12 @@ export default function CreateServiceCallScreen() {
 
           {/* Customer Email */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Customer Email</Text>
+            <Text style={styles.label}>{t('createServiceCall.customerEmail')}</Text>
             <TextInput
               style={styles.input}
               value={customerEmail}
               onChangeText={setCustomerEmail}
-              placeholder="customer@email.com"
+              placeholder={t('createServiceCall.customerEmailPlaceholder')}
               placeholderTextColor="#999"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -206,12 +208,12 @@ export default function CreateServiceCallScreen() {
 
           {/* Customer Address */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Address</Text>
+            <Text style={styles.label}>{t('createServiceCall.address')}</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={customerAddress}
               onChangeText={setCustomerAddress}
-              placeholder="123 Main St, City, State"
+              placeholder={t('createServiceCall.addressPlaceholder')}
               placeholderTextColor="#999"
               multiline
               numberOfLines={3}
@@ -220,26 +222,26 @@ export default function CreateServiceCallScreen() {
 
           {/* Scheduled Date */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Scheduled Date</Text>
+            <Text style={styles.label}>{t('createServiceCall.scheduledDate')}</Text>
             <Pressable
               onPress={() => setShowDatePicker(true)}
               style={styles.dateButton}
             >
               <Text style={[styles.dateButtonText, !scheduledDate && { color: '#999' }]}>
-                {scheduledDate 
-                  ? scheduledDate.toLocaleDateString('en-US', { 
+                {scheduledDate
+                  ? scheduledDate.toLocaleDateString('en-US', {
                       weekday: 'short',
-                      year: 'numeric', 
-                      month: 'short', 
-                      day: 'numeric' 
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
                     })
-                  : 'Select a date'}
+                  : t('createServiceCall.selectDate')}
               </Text>
               <Text style={styles.dateIcon}>📅</Text>
             </Pressable>
             {scheduledDate && (
               <Pressable onPress={() => setScheduledDate(null)} style={styles.clearDateButton}>
-                <Text style={styles.clearDateText}>Clear date</Text>
+                <Text style={styles.clearDateText}>{t('createServiceCall.clearDate')}</Text>
               </Pressable>
             )}
           </View>
@@ -257,7 +259,7 @@ export default function CreateServiceCallScreen() {
 
           {/* Priority */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Priority</Text>
+            <Text style={styles.label}>{t('createServiceCall.priority')}</Text>
             <View style={styles.optionRow}>
               {(['low', 'medium', 'high', 'urgent'] as ServiceCallPriority[]).map(p => (
                 <Pressable
@@ -273,40 +275,37 @@ export default function CreateServiceCallScreen() {
                   ]}
                 >
                   <Text style={[styles.optionText, priority === p && styles.optionTextActive]}>
-                    {p === 'urgent' ? '🚨 Urgent' : p.charAt(0).toUpperCase() + p.slice(1)}
+                    {p === 'urgent' ? t('createServiceCall.urgent') : t(`createServiceCall.${p}`)}
                   </Text>
                 </Pressable>
               ))}
             </View>
           </View>
 
-          {/* Status */}
+          {/* Status - Always starts as Open */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Status</Text>
+            <Text style={styles.label}>{t('createServiceCall.status')}</Text>
             <View style={styles.optionRow}>
-              {(['open', 'in_progress'] as ServiceCallStatus[]).map(s => (
-                <Pressable
-                  key={s}
-                  onPress={() => setStatus(s)}
-                  style={[styles.optionButton, status === s && styles.optionButtonActive]}
-                >
-                  <Text style={[styles.optionText, status === s && styles.optionTextActive]}>
-                    {s === 'in_progress' ? 'In Progress' : 'Open'}
-                  </Text>
-                </Pressable>
-              ))}
+              <Pressable
+                onPress={() => setStatus('open')}
+                style={[styles.optionButton, styles.optionButtonActive]}
+              >
+                <Text style={[styles.optionText, styles.optionTextActive]}>
+                  {t('createServiceCall.open')}
+                </Text>
+              </Pressable>
             </View>
           </View>
 
           {/* Assign Employees - NEW SECTION */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Assign Employees (optional)</Text>
+            <Text style={styles.label}>{t('createServiceCall.assignEmployees')}</Text>
 
             {loadingEmployees ? (
               <ActivityIndicator style={{ marginTop: 12 }} />
             ) : employees.length === 0 ? (
               <Text style={styles.helpText}>
-                No employees available. Use the "+ Employee" button on the home screen to add team members.
+                {t('createServiceCall.noEmployees')}
               </Text>
             ) : (
               <View style={styles.employeeChipsWrap}>
@@ -336,12 +335,12 @@ export default function CreateServiceCallScreen() {
 
           {/* Notes */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Notes</Text>
+            <Text style={styles.label}>{t('createServiceCall.notes')}</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Any additional notes..."
+              placeholder={t('createServiceCall.notesPlaceholder')}
               placeholderTextColor="#999"
               multiline
               numberOfLines={4}
@@ -355,7 +354,7 @@ export default function CreateServiceCallScreen() {
             style={[styles.submitButton, loading && styles.submitButtonDisabled]}
           >
             <Text style={styles.submitButtonText}>
-              {loading ? 'Creating...' : 'Create Service Call'}
+              {loading ? t('createServiceCall.creating') : t('createServiceCall.createButton')}
             </Text>
           </Pressable>
         </View>

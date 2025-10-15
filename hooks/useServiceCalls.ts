@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export type ServiceCallStatus = 'open' | 'in_progress' | 'completed' | 'cancelled';
+export type ServiceCallStatus = 'open' | 'completed' | 'cannot_complete';
 export type ServiceCallPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export type ServiceCall = {
@@ -18,6 +18,11 @@ export type ServiceCall = {
   priority: ServiceCallPriority;
   scheduled_date: string | null;
   completed_at: string | null;
+  completed_by_employee_id: string | null;
+  completion_photo_url: string | null;
+  completion_note: string | null;
+  cannot_complete_reason: string | null;
+  cannot_complete_at: string | null;
   project_id: string | null;
   notes: string | null;
   created_at: string;
@@ -37,6 +42,11 @@ type Row = {
   priority: ServiceCallPriority;
   scheduled_date: string | null;
   completed_at: string | null;
+  completed_by_employee_id: string | null;
+  completion_photo_url: string | null;
+  completion_note: string | null;
+  cannot_complete_reason: string | null;
+  cannot_complete_at: string | null;
   project_id: string | null;
   notes: string | null;
   created_at: string;
@@ -80,6 +90,11 @@ export function useServiceCalls(userId?: string) {
         priority: r.priority,
         scheduled_date: r.scheduled_date,
         completed_at: r.completed_at,
+        completed_by_employee_id: r.completed_by_employee_id,
+        completion_photo_url: r.completion_photo_url,
+        completion_note: r.completion_note,
+        cannot_complete_reason: r.cannot_complete_reason,
+        cannot_complete_at: r.cannot_complete_at,
         project_id: r.project_id,
         notes: r.notes,
         created_at: r.created_at,
@@ -125,12 +140,10 @@ export function getStatusColor(status: ServiceCallStatus): string {
   switch (status) {
     case 'open':
       return '#3B82F6'; // Blue
-    case 'in_progress':
-      return '#F59E0B'; // Orange
     case 'completed':
       return '#10B981'; // Green
-    case 'cancelled':
-      return '#6B7280'; // Gray
+    case 'cannot_complete':
+      return '#EF4444'; // Red
   }
 }
 
@@ -148,17 +161,15 @@ export function getPriorityColor(priority: ServiceCallPriority): string {
   }
 }
 
-// Helper function to get status label
-export function getStatusLabel(status: ServiceCallStatus): string {
+// Helper function to get status label translation key
+export function getStatusLabelKey(status: ServiceCallStatus): string {
   switch (status) {
     case 'open':
-      return 'Open';
-    case 'in_progress':
-      return 'In Progress';
+      return 'serviceCalls.statusOpen';
     case 'completed':
-      return 'Completed';
-    case 'cancelled':
-      return 'Cancelled';
+      return 'serviceCalls.statusCompleted';
+    case 'cannot_complete':
+      return 'serviceCalls.statusCannotComplete';
   }
 }
 

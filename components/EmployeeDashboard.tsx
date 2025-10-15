@@ -10,6 +10,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import LanguageSelector from './LanguageSelector';
+import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 
 type Project = {
@@ -21,6 +23,7 @@ type Project = {
   start_date: string | null;
   due_date: string | null;
   description: string | null;
+  completed: boolean | null;
 };
 
 type ServiceCall = {
@@ -34,6 +37,7 @@ type ServiceCall = {
 };
 
 export default function EmployeeDashboard() {
+  const { t } = useLanguage();
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -41,6 +45,9 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'projects' | 'service-calls'>('projects');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [serviceCallFilter, setServiceCallFilter] = useState<'active' | 'completed'>('active');
+  const [projectFilter, setProjectFilter] = useState<'active' | 'completed'>('active');
 
   useEffect(() => {
     loadUserAndData();
@@ -113,7 +120,7 @@ export default function EmployeeDashboard() {
       // Approach 1: Using @> operator (recommended for PostgreSQL arrays)
       const result1 = await supabase
         .from('projects')
-        .select('id, title, client_name, location, priority, start_date, due_date, description, assigned_employee_ids')
+        .select('id, title, client_name, location, priority, start_date, due_date, description, completed, assigned_employee_ids')
         .not('assigned_employee_ids', 'is', null);
 
       console.log('📦 All projects with assignments (not null):', result1.data);
@@ -216,14 +223,23 @@ export default function EmployeeDashboard() {
     router.replace('/LoginScreen');
   };
 
-  // Filter data based on search
-  const filteredProjects = projects.filter(project =>
+  // Filter projects by completion status
+  const activeProjects = projects.filter(project => !project.completed);
+  const completedProjects = projects.filter(project => project.completed === true);
+
+  // Then apply search filter based on which list we're viewing
+  const filteredProjects = (projectFilter === 'active' ? activeProjects : completedProjects).filter(project =>
     !searchQuery ||
     project.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (project.client_name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   );
 
-  const filteredServiceCalls = serviceCalls.filter(call =>
+  // Filter service calls by status
+  const activeServiceCalls = serviceCalls.filter(call => call.status !== 'completed');
+  const completedServiceCalls = serviceCalls.filter(call => call.status === 'completed');
+
+  // Then apply search filter based on which list we're viewing
+  const filteredServiceCalls = (serviceCallFilter === 'active' ? activeServiceCalls : completedServiceCalls).filter(call =>
     !searchQuery ||
     call.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     call.customer_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -243,42 +259,41 @@ export default function EmployeeDashboard() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.userName}>{userName || 'Employee'}</Text>
+          <Text style={styles.greeting}>{t('employee.welcomeBack')}</Text>
+          <Text style={styles.userName}>{userName || t('employee.employee')}</Text>
         </View>
-        <Pressable onPress={signOut} style={styles.signOutBtn}>
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </Pressable>
-      </View>
-
-      {/* Stats Cards */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, { borderLeftColor: '#3B82F6' }]}>
-          <Text style={styles.statNumber}>{projects.length}</Text>
-          <Text style={styles.statLabel}>Projects</Text>
-        </View>
-        <View style={[styles.statCard, { borderLeftColor: '#10B981' }]}>
-          <Text style={styles.statNumber}>{serviceCalls.length}</Text>
-          <Text style={styles.statLabel}>Service Calls</Text>
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => setShowLanguageModal(true)} style={styles.langBtn}>
+            <Text style={styles.langBtnText}>🌐</Text>
+          </Pressable>
+          <Pressable onPress={signOut} style={styles.signOutBtn}>
+            <Text style={styles.signOutText}>{t('auth.signOut')}</Text>
+          </Pressable>
         </View>
       </View>
 
       {/* Tab Navigation */}
       <View style={styles.tabRow}>
         <Pressable
-          onPress={() => setActiveTab('projects')}
+          onPress={() => {
+            setActiveTab('projects');
+            setSearchQuery('');
+          }}
           style={[styles.tab, activeTab === 'projects' && styles.tabActive]}
         >
           <Text style={[styles.tabText, activeTab === 'projects' && styles.tabTextActive]}>
-            Projects ({projects.length})
+            {t('employee.projects')} ({projectFilter === 'active' ? activeProjects.length : completedProjects.length})
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => setActiveTab('service-calls')}
+          onPress={() => {
+            setActiveTab('service-calls');
+            setSearchQuery('');
+          }}
           style={[styles.tab, activeTab === 'service-calls' && styles.tabActive]}
         >
           <Text style={[styles.tabText, activeTab === 'service-calls' && styles.tabTextActive]}>
-            Service Calls ({serviceCalls.length})
+            {t('employee.serviceCalls')} ({serviceCallFilter === 'active' ? activeServiceCalls.length : completedServiceCalls.length})
           </Text>
         </Pressable>
       </View>
@@ -287,12 +302,96 @@ export default function EmployeeDashboard() {
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder={`Search ${activeTab === 'projects' ? 'projects' : 'service calls'}...`}
+          placeholder={activeTab === 'projects' ? t('employee.searchProjects') : t('employee.searchServiceCalls')}
           placeholderTextColor="#999"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
       </View>
+
+      {/* Stats Cards - Projects */}
+      {activeTab === 'projects' && (
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { borderLeftColor: '#3B82F6' }]}>
+            <Text style={styles.statNumber}>{activeProjects.length}</Text>
+            <Text style={styles.statLabel}>{t('home.activeProjects')}</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftColor: '#8B5CF6' }]}>
+            <Text style={styles.statNumber}>{completedProjects.length}</Text>
+            <Text style={styles.statLabel}>{t('home.completedProjects')}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Stats Cards - Service Calls */}
+      {activeTab === 'service-calls' && (
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, { borderLeftColor: '#10B981' }]}>
+            <Text style={styles.statNumber}>{activeServiceCalls.length}</Text>
+            <Text style={styles.statLabel}>{t('home.activeCalls')}</Text>
+          </View>
+          <View style={[styles.statCard, { borderLeftColor: '#059669' }]}>
+            <Text style={styles.statNumber}>{completedServiceCalls.length}</Text>
+            <Text style={styles.statLabel}>{t('home.completed')}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Project Filter (Active/Completed) */}
+      {activeTab === 'projects' && (
+        <View style={styles.filterRow}>
+          <Pressable
+            onPress={() => {
+              setProjectFilter('active');
+              setSearchQuery(''); // Clear search when switching filters
+            }}
+            style={[styles.filterButton, projectFilter === 'active' && styles.filterButtonActive]}
+          >
+            <Text style={[styles.filterText, projectFilter === 'active' && styles.filterTextActive]}>
+              {t('home.active')} ({activeProjects.length})
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setProjectFilter('completed');
+              setSearchQuery(''); // Clear search when switching filters
+            }}
+            style={[styles.filterButton, projectFilter === 'completed' && styles.filterButtonCompletedActive]}
+          >
+            <Text style={[styles.filterText, projectFilter === 'completed' && styles.filterTextCompletedActive]}>
+              {t('home.completed')} ({completedProjects.length})
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Service Call Filter (Active/Completed) */}
+      {activeTab === 'service-calls' && (
+        <View style={styles.filterRow}>
+          <Pressable
+            onPress={() => {
+              setServiceCallFilter('active');
+              setSearchQuery(''); // Clear search when switching filters
+            }}
+            style={[styles.filterButton, serviceCallFilter === 'active' && styles.filterButtonActive]}
+          >
+            <Text style={[styles.filterText, serviceCallFilter === 'active' && styles.filterTextActive]}>
+              {t('home.active')} ({activeServiceCalls.length})
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setServiceCallFilter('completed');
+              setSearchQuery(''); // Clear search when switching filters
+            }}
+            style={[styles.filterButton, serviceCallFilter === 'completed' && styles.filterButtonActive]}
+          >
+            <Text style={[styles.filterText, serviceCallFilter === 'completed' && styles.filterTextActive]}>
+              {t('home.completed')} ({completedServiceCalls.length})
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* Content */}
       <ScrollView style={styles.contentList}>
@@ -300,20 +399,30 @@ export default function EmployeeDashboard() {
           filteredProjects.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>
-                {searchQuery ? 'No projects match your search' : 'No projects assigned yet'}
+                {searchQuery ? t('employee.noProjectsFound') : t('employee.noProjectsAssigned')}
               </Text>
             </View>
           ) : (
             filteredProjects.map(project => (
               <Pressable
                 key={project.id}
-                style={styles.projectCard}
+                style={[
+                  styles.projectCard,
+                  project.completed && styles.projectCardCompleted
+                ]}
                 onPress={() => router.push(`/projects/${project.id}/planner` as any)}
               >
+                {/* Completed checkmark badge */}
+                {project.completed && (
+                  <View style={styles.completedCheckmark}>
+                    <Text style={styles.completedCheckmarkText}>✓</Text>
+                  </View>
+                )}
+
                 <View style={[
                   styles.priorityBadge,
                   {
-                    backgroundColor: 
+                    backgroundColor:
                       project.priority === 'High' ? '#FEE2E2' :
                       project.priority === 'Medium' ? '#FEF3C7' : '#D1FAE5'
                   }
@@ -330,30 +439,54 @@ export default function EmployeeDashboard() {
                   </Text>
                 </View>
 
-                <Text style={styles.projectTitle}>{project.title}</Text>
-                
+                <Text style={[
+                  styles.projectTitle,
+                  project.completed && styles.projectTitleCompleted
+                ]}>
+                  {project.title}
+                </Text>
+
                 {project.client_name && (
-                  <Text style={styles.projectDetail}>👤 {project.client_name}</Text>
+                  <Text style={[
+                    styles.projectDetail,
+                    project.completed && styles.textMuted
+                  ]}>
+                    👤 {project.client_name}
+                  </Text>
                 )}
-                
+
                 {project.location && (
-                  <Text style={styles.projectDetail}>📍 {project.location}</Text>
+                  <Text style={[
+                    styles.projectDetail,
+                    project.completed && styles.textMuted
+                  ]}>
+                    📍 {project.location}
+                  </Text>
                 )}
 
                 {project.start_date && (
-                  <Text style={styles.projectDetail}>
+                  <Text style={[
+                    styles.projectDetail,
+                    project.completed && styles.textMuted
+                  ]}>
                     📅 Start: {new Date(project.start_date).toLocaleDateString()}
                   </Text>
                 )}
 
                 {project.due_date && (
-                  <Text style={styles.projectDue}>
+                  <Text style={[
+                    styles.projectDue,
+                    project.completed && styles.textMuted
+                  ]}>
                     🎯 Due: {new Date(project.due_date).toLocaleDateString()}
                   </Text>
                 )}
 
                 {project.description && (
-                  <Text style={styles.projectDescription} numberOfLines={2}>
+                  <Text style={[
+                    styles.projectDescription,
+                    project.completed && styles.textMuted
+                  ]} numberOfLines={2}>
                     {project.description}
                   </Text>
                 )}
@@ -366,20 +499,30 @@ export default function EmployeeDashboard() {
           filteredServiceCalls.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>
-                {searchQuery ? 'No service calls match your search' : 'No service calls assigned yet'}
+                {searchQuery ? t('employee.noServiceCallsFound') : t('employee.noServiceCallsAssigned')}
               </Text>
             </View>
           ) : (
             filteredServiceCalls.map(call => (
               <Pressable
                 key={call.id}
-                style={styles.serviceCallCard}
+                style={[
+                  styles.serviceCallCard,
+                  call.status === 'completed' && styles.serviceCallCardCompleted
+                ]}
                 onPress={() => router.push(`/service-calls/${call.id}` as any)}
               >
+                {/* Completed checkmark badge */}
+                {call.status === 'completed' && (
+                  <View style={styles.completedCheckmark}>
+                    <Text style={styles.completedCheckmarkText}>✓</Text>
+                  </View>
+                )}
+
                 <View style={[
                   styles.priorityBadge,
                   {
-                    backgroundColor: 
+                    backgroundColor:
                       call.priority === 'urgent' ? '#FEE2E2' :
                       call.priority === 'high' ? '#FEF3C7' :
                       call.priority === 'medium' ? '#DBEAFE' : '#D1FAE5'
@@ -398,15 +541,33 @@ export default function EmployeeDashboard() {
                   </Text>
                 </View>
 
-                <Text style={styles.serviceCallTitle}>{call.title}</Text>
-                <Text style={styles.serviceCallCustomer}>👤 {call.customer_name}</Text>
-                
+                <Text style={[
+                  styles.serviceCallTitle,
+                  call.status === 'completed' && styles.serviceCallTitleCompleted
+                ]}>
+                  {call.title}
+                </Text>
+                <Text style={[
+                  styles.serviceCallCustomer,
+                  call.status === 'completed' && styles.textMuted
+                ]}>
+                  👤 {call.customer_name}
+                </Text>
+
                 {call.customer_address && (
-                  <Text style={styles.serviceCallDetail}>📍 {call.customer_address}</Text>
+                  <Text style={[
+                    styles.serviceCallDetail,
+                    call.status === 'completed' && styles.textMuted
+                  ]}>
+                    📍 {call.customer_address}
+                  </Text>
                 )}
 
                 {call.scheduled_date && (
-                  <Text style={styles.serviceCallScheduled}>
+                  <Text style={[
+                    styles.serviceCallScheduled,
+                    call.status === 'completed' && styles.textMuted
+                  ]}>
                     📅 Scheduled: {new Date(call.scheduled_date).toLocaleDateString()}
                   </Text>
                 )}
@@ -420,7 +581,7 @@ export default function EmployeeDashboard() {
                   }
                 ]}>
                   <Text style={styles.statusText}>
-                    {call.status === 'in_progress' ? 'In Progress' : 
+                    {call.status === 'in_progress' ? 'In Progress' :
                      call.status.charAt(0).toUpperCase() + call.status.slice(1)}
                   </Text>
                 </View>
@@ -429,6 +590,12 @@ export default function EmployeeDashboard() {
           )
         )}
       </ScrollView>
+
+      {/* Language Selector Modal */}
+      <LanguageSelector
+        visible={showLanguageModal}
+        onClose={() => setShowLanguageModal(false)}
+      />
     </View>
   );
 }
@@ -470,6 +637,22 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginTop: 2,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  langBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#E0E7FF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#6D5DE7',
+  },
+  langBtnText: {
+    fontSize: 20,
+  },
   signOutBtn: {
     paddingHorizontal: 14,
     paddingVertical: 7,
@@ -484,7 +667,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 0,
     paddingBottom: 12,
     gap: 10,
   },
@@ -646,12 +829,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    position: 'relative',
+  },
+  projectCardCompleted: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E0E7FF',
   },
   projectTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 6,
+  },
+  projectTitleCompleted: {
+    color: '#6B7280',
   },
   projectDetail: {
     fontSize: 13,
@@ -679,12 +871,40 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    position: 'relative',
+  },
+  serviceCallCardCompleted: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+  },
+  completedCheckmark: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completedCheckmarkText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   serviceCallTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 6,
+  },
+  serviceCallTitleCompleted: {
+    color: '#6B7280',
+  },
+  textMuted: {
+    color: '#9CA3AF',
   },
   serviceCallCustomer: {
     fontSize: 13,
@@ -707,5 +927,40 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 10,
     marginTop: 8,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  filterButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  filterButtonActive: {
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
+  },
+  filterButtonCompletedActive: {
+    backgroundColor: '#8B5CF6',
+    borderColor: '#8B5CF6',
+  },
+  filterText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  filterTextActive: {
+    color: '#FFF',
+  },
+  filterTextCompletedActive: {
+    color: '#FFF',
   },
 });

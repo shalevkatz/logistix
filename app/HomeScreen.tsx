@@ -7,11 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AddEmployeeModal from '../components/AddEmployeeModal';
 import { useProfile } from '../hooks/useProfile';
 import { useProjects } from '../hooks/useProjects';
-import { getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel, ServiceCallStatus, useServiceCalls } from '../hooks/useServiceCalls';
+import { getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabelKey, ServiceCallStatus, useServiceCalls } from '../hooks/useServiceCalls';
+import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { styles } from '../styles/HomeScreen.styles';
 
 export default function HomeScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
 
   // read session once for user id + email
@@ -51,7 +53,7 @@ export default function HomeScreen() {
   const { serviceCalls, loading: serviceCallsLoading, error: serviceCallsError, refetch: refetchServiceCalls } = useServiceCalls(userId);
   
   // Service calls filter state
-  const [serviceCallStatusFilter, setServiceCallStatusFilter] = useState<'active' | 'open' | 'in_progress' | 'completed'>('active');
+  const [serviceCallStatusFilter, setServiceCallStatusFilter] = useState<'active' | ServiceCallStatus>('active');
 
   // Fetch employees function
   const fetchEmployees = useCallback(async () => {
@@ -164,7 +166,7 @@ export default function HomeScreen() {
 
     // Filter by status
     if (serviceCallStatusFilter === 'active') {
-      filtered = filtered.filter(call => call.status === 'open' || call.status === 'in_progress');
+      filtered = filtered.filter(call => call.status === 'open' || call.status === 'cannot_complete');
     } else {
       filtered = filtered.filter(call => call.status === serviceCallStatusFilter);
     }
@@ -186,9 +188,9 @@ export default function HomeScreen() {
   
   // Count service calls by status
   const serviceCallStatusCounts = useMemo(() => ({
-    active: serviceCalls.filter(c => c.status === 'open' || c.status === 'in_progress').length,
+    active: serviceCalls.filter(c => c.status === 'open' || c.status === 'cannot_complete').length,
     open: serviceCalls.filter(c => c.status === 'open').length,
-    in_progress: serviceCalls.filter(c => c.status === 'in_progress').length,
+    cannot_complete: serviceCalls.filter(c => c.status === 'cannot_complete').length,
     completed: serviceCalls.filter(c => c.status === 'completed').length,
   }), [serviceCalls]);
 
@@ -621,14 +623,14 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.serviceCallFilterTabs}>
-              {(['active', 'open', 'in_progress', 'completed'] as const).map(status => (
+              {(['active', 'open', 'cannot_complete', 'completed'] as const).map(status => (
                 <Pressable
                   key={status}
                   onPress={() => setServiceCallStatusFilter(status)}
                   style={[styles.serviceCallFilterTab, serviceCallStatusFilter === status && styles.serviceCallFilterTabActive]}
                 >
                   <Text style={[styles.serviceCallFilterTabText, serviceCallStatusFilter === status && styles.serviceCallFilterTabTextActive]}>
-                    {status === 'active' ? 'Active' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                    {status === 'active' ? 'Active' : status === 'cannot_complete' ? 'Cannot Complete' : status.charAt(0).toUpperCase() + status.slice(1)}
                   </Text>
                 </Pressable>
               ))}
@@ -700,7 +702,7 @@ export default function HomeScreen() {
 
                       <View style={styles.serviceCallCardFooter}>
                         <View style={[styles.serviceCallStatusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-                          <Text style={styles.serviceCallStatusText}>{getStatusLabel(item.status)}</Text>
+                          <Text style={styles.serviceCallStatusText}>{t(getStatusLabelKey(item.status))}</Text>
                         </View>
                         {item.customer_phone && (
                           <Pressable

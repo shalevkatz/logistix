@@ -1,7 +1,23 @@
 import { nanoid } from 'nanoid/non-secure';
 import { create } from 'zustand';
 
-export type DeviceType = 'cctv' | 'nvr' | 'ap' | 'switch' | 'router';
+export type DeviceType =
+  // Cameras & Surveillance
+  | 'cctv' | 'ptz-camera' | 'dome-camera' | 'bullet-camera' | 'nvr' | 'dvr'
+  // Network Infrastructure
+  | 'router' | 'switch' | 'ap' | 'repeater' | 'modem' | 'firewall'
+  // Servers & Storage
+  | 'server' | 'rack' | 'nas' | 'ups'
+  // IoT & Sensors
+  | 'motion-sensor' | 'door-sensor' | 'smoke-detector' | 'temperature-sensor' | 'humidity-sensor'
+  // Access Control
+  | 'card-reader' | 'keypad' | 'biometric' | 'door-lock' | 'gate-controller'
+  // Intercom & Communication
+  | 'intercom' | 'speaker' | 'microphone' | 'phone'
+  // Power & Electrical
+  | 'power-outlet' | 'poe-injector' | 'surge-protector' | 'battery'
+  // Lighting & Display
+  | 'light' | 'smart-light' | 'display' | 'monitor';
 
 export type DeviceNode = {
   id: string;
@@ -10,7 +26,9 @@ export type DeviceNode = {
   y: number;
   rotation: number;
   scale: number;
+  color?: string;
   status?: 'installed' | 'pending' | 'cannot_install' | null;
+  parentRackId?: string | null; // If this device is inside a rack, this is the rack's id
 };
 
 
@@ -64,6 +82,7 @@ type SiteMapState = {
   deviceToPlace: DeviceType | null;
   viewport: Viewport;
   preferredCableColor: string | null;
+  preferredDeviceColor: string | null;
 
   // per-floor backgrounds
   activeFloorId?: string;
@@ -81,6 +100,7 @@ type SiteMapState = {
   setImageDimensions: (dims: { width: number; height: number }) => void;
   setRenderedImageSize: (size: { width: number; height: number; x: number; y: number }) => void;
   setPreferredCableColor: (color: string | null) => void;
+  setPreferredDeviceColor: (color: string | null) => void;
 
   
 
@@ -111,6 +131,11 @@ type SiteMapState = {
   addCablePoint: (x: number, y: number) => void;
   finishCable: () => void;
   moveCablePoint: (cableId: string, index: number, dx: number, dy: number) => void;
+
+  // rack management
+  addDeviceToRack: (deviceId: string, rackId: string) => void;
+  removeDeviceFromRack: (deviceId: string) => void;
+  getDevicesInRack: (rackId: string) => DeviceNode[];
 
   // edit tools
   undo: () => void;
@@ -194,6 +219,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
   viewport: { scale: 1, translateX: 0, translateY: 0 },
   loadDevices: (devices) => set({ nodes: devices }),
   preferredCableColor: null,
+  preferredDeviceColor: null,
 
   // per-floor backgrounds
   activeFloorId: undefined,
@@ -258,6 +284,7 @@ export const useSiteMapStore = create<SiteMapState>((set, get) => ({
     
   setLocalFloors: (floors) => set({ localFloors: floors }),
 setPreferredCableColor: (color) => set({ preferredCableColor: color }),
+setPreferredDeviceColor: (color) => set({ preferredDeviceColor: color }),
   setAllFloorCanvases: (m) => set({ floorCanvases: m }),
   
   // basic controls
@@ -298,10 +325,14 @@ setPreferredCableColor: (color) => set({ preferredCableColor: color }),
   addNodeAt: (x, y, type) =>
     set((s) => {
       const past = [...s.historyPast, takeSnapshot(s)];
+
+      // Use preferred color if set, otherwise use default white
+      const color = s.preferredDeviceColor || '#ffffff';
+
       return {
         nodes: [
           ...s.nodes,
-          { id: nanoid(), type: type ?? (s.deviceToPlace ?? 'cctv'), x, y, rotation: 0, scale: 1 },
+          { id: nanoid(), type: type ?? (s.deviceToPlace ?? 'cctv'), x, y, rotation: 0, scale: 1, color },
         ],
         mode: 'select',
         deviceToPlace: null,
@@ -461,6 +492,22 @@ setPreferredCableColor: (color) => set({ preferredCableColor: color }),
         canRedo: false,
       };
     }),
+
+  // rack management
+  addDeviceToRack: (deviceId, rackId) =>
+    set((s) => ({
+      nodes: s.nodes.map((n) => (n.id === deviceId ? { ...n, parentRackId: rackId } : n)),
+    })),
+
+  removeDeviceFromRack: (deviceId) =>
+    set((s) => ({
+      nodes: s.nodes.map((n) => (n.id === deviceId ? { ...n, parentRackId: null } : n)),
+    })),
+
+  getDevicesInRack: (rackId) => {
+    const state = get();
+    return state.nodes.filter((n) => n.parentRackId === rackId);
+  },
 }));
 
 export type { SiteMapState };

@@ -1,6 +1,6 @@
-// components/DeviceIcon.tsx - WITH STATUS SUPPORT
+// components/DeviceIcon.tsx - WITH STATUS SUPPORT AND RACK BADGE
 import React, { memo, useEffect } from 'react';
-import { View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -16,16 +16,23 @@ type Props = {
   y: number;
   selected: boolean;
   type: DeviceType;
+  color?: string;
   editable?: boolean;
   status?: 'installed' | 'pending' | 'cannot_install' | null;
   onTapInReadMode?: (id: string) => void;
+  onSelect?: (id: string) => void;
 };
 
-function DeviceIconImpl({ id, x, y, selected, type, editable = false, status = null, onTapInReadMode }: Props) {
+function DeviceIconImpl({ id, x, y, selected, type, color = '#ffffff', editable = false, status = null, onTapInReadMode, onSelect }: Props) {
   const moveNode = useSiteMapStore((s) => s.moveNode);
   const select = useSiteMapStore((s) => s.select);
   const viewportScale = useSiteMapStore((s) => s.viewport.scale);
   const renderedImageSize = useSiteMapStore((s) => s.renderedImageSize);
+  const getDevicesInRack = useSiteMapStore((s) => s.getDevicesInRack);
+
+  // If this is a rack, get the device count
+  const isRack = type === 'rack';
+  const deviceCount = isRack ? getDevicesInRack(id).length : 0;
 
   const baseX = useSharedValue(renderedImageSize ? renderedImageSize.x + (x * renderedImageSize.width) : 0);
   const baseY = useSharedValue(renderedImageSize ? renderedImageSize.y + (y * renderedImageSize.height) : 0);
@@ -86,6 +93,10 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false, status = n
   const tap = Gesture.Tap().onEnd(() => {
     'worklet';
     if (editable) {
+      // Call onSelect callback first (for rack handling)
+      if (onSelect) {
+        runOnJS(onSelect)(id);
+      }
       runOnJS(select)(id);
     } else {
       if (onTapInReadMode) {
@@ -96,8 +107,8 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false, status = n
 
   const gesture = Gesture.Simultaneous(pan, tap);
 
-  const SIZE = 50;
-  const R = 14;
+  const SIZE = 18;
+  const R = 8;
 
   const getStatusColor = () => {
     switch (status) {
@@ -142,7 +153,7 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false, status = n
             }}
           />
         )}
-        
+
         <View
           style={{
             flex: 1,
@@ -154,8 +165,32 @@ function DeviceIconImpl({ id, x, y, selected, type, editable = false, status = n
             borderColor: '#7c3aed',
           }}
         >
-          <DeviceGlyph type={type} size={SIZE} color="#ffffff" />
+          <DeviceGlyph type={type} size={SIZE} color={color} />
         </View>
+
+        {/* Device count badge for racks */}
+        {isRack && deviceCount > 0 && (
+          <View
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              backgroundColor: '#7c3aed',
+              borderRadius: 8,
+              minWidth: 16,
+              height: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 4,
+              borderWidth: 1.5,
+              borderColor: '#0b1020',
+            }}
+          >
+            <Text style={{ color: 'white', fontSize: 10, fontWeight: '700' }}>
+              {deviceCount}
+            </Text>
+          </View>
+        )}
       </Animated.View>
     </GestureDetector>
   );

@@ -1,5 +1,6 @@
 // components/DeviceStatusSelector.tsx
 import { MaterialCommunityIcons as MIcon } from '@expo/vector-icons';
+import { useLanguage } from '@/contexts/LanguageContext';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -25,6 +26,7 @@ export default function DeviceStatusSelector({
   existingIssueDescription,
   isManager
 }: Props) {
+  const { t } = useLanguage();
   const [selectedStatus, setSelectedStatus] = useState<DeviceStatus>(null);
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [showIssueInput, setShowIssueInput] = useState(false);
@@ -33,11 +35,11 @@ export default function DeviceStatusSelector({
   const [issueDescription, setIssueDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const statuses: { value: DeviceStatus; label: string; color: string; icon: string }[] = [
-    { value: 'installed', label: 'Installed', color: '#22c55e', icon: 'check-circle' },
-    { value: 'pending', label: 'Pending', color: '#f59e0b', icon: 'clock-outline' },
-    { value: 'cannot_install', label: 'Cannot Install', color: '#ef4444', icon: 'close-circle' },
-    { value: null, label: 'No Status', color: '#6b7280', icon: 'circle-outline' },
+  const statuses: { value: DeviceStatus; labelKey: string; color: string; icon: string }[] = [
+    { value: 'installed', labelKey: 'device.installed', color: '#22c55e', icon: 'check-circle' },
+    { value: 'pending', labelKey: 'device.pending', color: '#f59e0b', icon: 'clock-outline' },
+    { value: 'cannot_install', labelKey: 'device.cannotInstall', color: '#ef4444', icon: 'close-circle' },
+    { value: null, labelKey: 'device.noStatus', color: '#6b7280', icon: 'circle-outline' },
   ];
 
   const handleStatusClick = (status: DeviceStatus) => {
@@ -59,7 +61,7 @@ export default function DeviceStatusSelector({
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow camera access to take photos.');
+        Alert.alert(t('device.permissionNeeded'), t('device.cameraPermissionMessage'));
         return;
       }
 
@@ -75,7 +77,7 @@ export default function DeviceStatusSelector({
       }
     } catch (error) {
       console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo');
+      Alert.alert(t('common.error'), t('device.failedToTakePhoto'));
     } finally {
       setLoading(false);
     }
@@ -85,7 +87,7 @@ export default function DeviceStatusSelector({
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow photo library access.');
+        Alert.alert(t('device.permissionNeeded'), t('device.galleryPermissionMessage'));
         return;
       }
 
@@ -101,7 +103,7 @@ export default function DeviceStatusSelector({
       }
     } catch (error) {
       console.error('Error picking photo:', error);
-      Alert.alert('Error', 'Failed to pick photo');
+      Alert.alert(t('common.error'), t('device.failedToPickPhoto'));
     } finally {
       setLoading(false);
     }
@@ -109,7 +111,7 @@ export default function DeviceStatusSelector({
 
   const confirmInstalled = () => {
     if (!photoUri) {
-      Alert.alert('Photo Required', 'Please take a photo of the installed device');
+      Alert.alert(t('device.photoRequired'), t('device.takePhotoRequired'));
       return;
     }
     onSelectStatus('installed', photoUri);
@@ -119,7 +121,7 @@ export default function DeviceStatusSelector({
 
   const confirmCannotInstall = () => {
     if (!issueDescription.trim()) {
-      Alert.alert('Description Required', 'Please describe why the device cannot be installed');
+      Alert.alert(t('device.descriptionRequired'), t('device.describeIssue'));
       return;
     }
     onSelectStatus('cannot_install', undefined, issueDescription.trim());
@@ -158,17 +160,17 @@ export default function DeviceStatusSelector({
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}>
             <View style={{ backgroundColor: '#1f2937', borderRadius: 16, padding: 20 }}>
               <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
-                Device Information
+                {t('device.deviceInformation')}
               </Text>
               <Text style={{ color: '#9ca3af', fontSize: 14, marginBottom: 20 }}>
-                {currentStatus === 'installed' ? 'Installation confirmed by employee' : 'Issue reported by employee'}
+                {currentStatus === 'installed' ? t('device.installationConfirmed') : t('device.issueReportedByEmployee')}
               </Text>
 
               {/* Show installation photo if available */}
               {existingPhotoUrl && currentStatus === 'installed' && (
                 <View style={{ marginBottom: 20 }}>
                   <Text style={{ color: '#9ca3af', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
-                    Installation Photo:
+                    {t('device.installationPhotoLabel')}
                   </Text>
                   <Image
                     source={{ uri: existingPhotoUrl }}
@@ -187,7 +189,7 @@ export default function DeviceStatusSelector({
               {existingIssueDescription && currentStatus === 'cannot_install' && (
                 <View style={{ marginBottom: 20 }}>
                   <Text style={{ color: '#9ca3af', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
-                    Issue Description:
+                    {t('device.issueDescriptionLabel')}
                   </Text>
                   <View
                     style={{
@@ -208,7 +210,7 @@ export default function DeviceStatusSelector({
               {/* Current Status Badge */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
                 <Text style={{ color: '#9ca3af', fontSize: 14, fontWeight: '600', marginRight: 8 }}>
-                  Current Status:
+                  {t('device.currentStatus')}
                 </Text>
                 <View
                   style={{
@@ -226,7 +228,7 @@ export default function DeviceStatusSelector({
                     color="white"
                   />
                   <Text style={{ color: 'white', fontSize: 14, fontWeight: '600', marginLeft: 6 }}>
-                    {currentStatus === 'installed' ? 'Installed' : 'Cannot Install'}
+                    {currentStatus === 'installed' ? t('device.installed') : t('device.cannotInstall')}
                   </Text>
                 </View>
               </View>
@@ -248,7 +250,7 @@ export default function DeviceStatusSelector({
               >
                 <MIcon name="pencil" size={20} color="white" />
                 <Text style={{ color: 'white', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
-                  Change Status
+                  ✏️ {t('device.changeStatus')}
                 </Text>
               </Pressable>
 
@@ -259,7 +261,7 @@ export default function DeviceStatusSelector({
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Close</Text>
+                <Text style={{ color: '#9ca3af', fontWeight: '600' }}>{t('device.close')}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -292,12 +294,12 @@ export default function DeviceStatusSelector({
             onPress={(e) => e.stopPropagation()}
           >
             <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', marginBottom: 16 }}>
-              Device Status
+              {t('device.status')}
             </Text>
 
             {statuses.map((s) => (
               <Pressable
-                key={s.label}
+                key={s.labelKey}
                 onPress={() => handleStatusClick(s.value)}
                 style={{
                   flexDirection: 'row',
@@ -318,7 +320,7 @@ export default function DeviceStatusSelector({
                     flex: 1,
                   }}
                 >
-                  {s.label}
+                  {t(s.labelKey)}
                 </Text>
                 {currentStatus === s.value && (
                   <MIcon name="check" size={20} color="#7c3aed" />
@@ -336,7 +338,7 @@ export default function DeviceStatusSelector({
                 backgroundColor: '#374151',
               }}
             >
-              <Text style={{ color: 'white', fontWeight: '600' }}>Cancel</Text>
+              <Text style={{ color: 'white', fontWeight: '600' }}>{t('common.cancel')}</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -352,10 +354,10 @@ export default function DeviceStatusSelector({
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 20 }}>
             <View style={{ backgroundColor: '#1f2937', borderRadius: 16, padding: 20 }}>
               <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
-                Device Installed
+                {t('device.deviceInstalled')}
               </Text>
               <Text style={{ color: '#9ca3af', fontSize: 14, marginBottom: 20 }}>
-                Take a photo to confirm the installation
+                {t('device.takePhotoToConfirm')}
               </Text>
 
               {/* Photo Preview */}
@@ -401,7 +403,7 @@ export default function DeviceStatusSelector({
                   borderColor: '#6b7280',
                 }}>
                   <MIcon name="camera" size={64} color="#6b7280" />
-                  <Text style={{ color: '#9ca3af', marginTop: 12 }}>No photo taken yet</Text>
+                  <Text style={{ color: '#9ca3af', marginTop: 12 }}>{t('device.noPhotoYet')}</Text>
                 </View>
               )}
 
@@ -424,7 +426,7 @@ export default function DeviceStatusSelector({
                   >
                     <MIcon name="camera" size={24} color="white" />
                     <Text style={{ color: 'white', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
-                      Take Photo
+                      {t('device.takePhoto')}
                     </Text>
                   </Pressable>
 
@@ -442,7 +444,7 @@ export default function DeviceStatusSelector({
                   >
                     <MIcon name="image" size={24} color="white" />
                     <Text style={{ color: 'white', fontSize: 16, fontWeight: '600', marginLeft: 8 }}>
-                      Choose from Gallery
+                      {t('device.chooseFromGallery')}
                     </Text>
                   </Pressable>
 
@@ -458,7 +460,7 @@ export default function DeviceStatusSelector({
                       }}
                     >
                       <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>
-                        ✓ Confirm Installation
+                        ✓ {t('device.confirmInstallation')}
                       </Text>
                     </Pressable>
                   )}
@@ -473,7 +475,7 @@ export default function DeviceStatusSelector({
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: '#9ca3af', fontWeight: '600' }}>← Back</Text>
+                    <Text style={{ color: '#9ca3af', fontWeight: '600' }}>← {t('common.back')}</Text>
                   </Pressable>
                 </>
               )}
@@ -491,16 +493,16 @@ export default function DeviceStatusSelector({
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#1f2937', borderRadius: 16, padding: 20 }}>
             <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
-              Cannot Install
+              {t('device.cannotInstall')}
             </Text>
             <Text style={{ color: '#9ca3af', fontSize: 14, marginBottom: 20 }}>
-              Describe the issue preventing installation
+              {t('device.describeIssue')}
             </Text>
 
             <TextInput
               value={issueDescription}
               onChangeText={setIssueDescription}
-              placeholder="E.g., No power outlet available, structural issue, missing parts..."
+              placeholder={t('device.issuePlaceholder')}
               placeholderTextColor="#6b7280"
               multiline
               numberOfLines={6}
@@ -527,7 +529,7 @@ export default function DeviceStatusSelector({
               }}
             >
               <Text style={{ color: 'white', fontSize: 16, fontWeight: '700' }}>
-                Submit Issue
+                {t('device.submitIssue')}
               </Text>
             </Pressable>
 
@@ -541,7 +543,7 @@ export default function DeviceStatusSelector({
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#9ca3af', fontWeight: '600' }}>← Back</Text>
+              <Text style={{ color: '#9ca3af', fontWeight: '600' }}>← {t('common.back')}</Text>
             </Pressable>
           </View>
         </View>

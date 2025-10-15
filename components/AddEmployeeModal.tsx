@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 
 type AddEmployeeModalProps = {
@@ -19,6 +20,7 @@ type AddEmployeeModalProps = {
 };
 
 export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmployeeModalProps) {
+  const { t } = useLanguage();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -40,12 +42,12 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
   const handleAddEmployee = async () => {
     // Validation
     if (!fullName.trim()) {
-      Alert.alert('Missing Information', 'Please enter employee name');
+      Alert.alert(t('employees.missingInfo'), t('employees.enterName'));
       return;
     }
 
     if (!email.trim() || !validateEmail(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      Alert.alert(t('employees.invalidEmail'), t('employees.enterValidEmail'));
       return;
     }
 
@@ -66,7 +68,7 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
         .single();
 
       if (existingUser) {
-        Alert.alert('Email Exists', 'An employee with this email already exists');
+        Alert.alert(t('employees.emailExists'), t('employees.emailAlreadyExists'));
         setLoading(false);
         return;
       }
@@ -143,7 +145,7 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
 
     } catch (error: any) {
       console.error('Error adding employee:', error);
-      Alert.alert('Error', error.message || 'Failed to add employee');
+      Alert.alert(t('employees.error'), error.message || t('employees.failedToAdd'));
       setLoading(false);
     }
   };
@@ -177,31 +179,30 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
                 <Text style={styles.successIconText}>✓</Text>
               </View>
               
-              <Text style={styles.successTitle}>Employee Added!</Text>
+              <Text style={styles.successTitle}>{t('employees.employeeAdded')}</Text>
               <Text style={styles.successSubtitle}>
-                Share these credentials with {fullName}
+                {t('employees.shareCredentials')} {fullName}
               </Text>
 
               <View style={styles.credentialsBox}>
                 <View style={styles.credentialRow}>
-                  <Text style={styles.credentialLabel}>Email:</Text>
+                  <Text style={styles.credentialLabel}>{t('employees.emailLabel')}</Text>
                   <Text style={styles.credentialValue}>{email}</Text>
                 </View>
                 <View style={styles.credentialRow}>
-                  <Text style={styles.credentialLabel}>Password:</Text>
+                  <Text style={styles.credentialLabel}>{t('employees.passwordLabel')}</Text>
                   <Text style={styles.credentialValue}>{generatedPassword}</Text>
                 </View>
               </View>
 
               <View style={styles.warningBox}>
                 <Text style={styles.warningText}>
-                  ⚠️ Make sure to share these credentials with the employee. 
-                  They will be asked to change their password on first login.
+                  {t('employees.credentialsWarning')}
                 </Text>
               </View>
 
               <Pressable style={styles.doneButton} onPress={handleClose}>
-                <Text style={styles.doneButtonText}>Done</Text>
+                <Text style={styles.doneButtonText}>{t('employees.done')}</Text>
               </Pressable>
             </View>
           </View>
@@ -220,26 +221,26 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add New Employee</Text>
+            <Text style={styles.modalTitle}>{t('employees.addNewEmployee')}</Text>
             <Pressable onPress={onClose}>
               <Text style={styles.modalClose}>✕</Text>
             </Pressable>
           </View>
 
           <ScrollView style={styles.modalBody}>
-            <Text style={styles.inputLabel}>Full Name *</Text>
+            <Text style={styles.inputLabel}>{t('employees.fullNameRequired')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="John Smith"
+              placeholder={t('employees.fullNamePlaceholder')}
               value={fullName}
               onChangeText={setFullName}
               autoCapitalize="words"
             />
 
-            <Text style={styles.inputLabel}>Email *</Text>
+            <Text style={styles.inputLabel}>{t('employees.emailRequired')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="john.smith@company.com"
+              placeholder={t('employees.emailPlaceholder')}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -247,10 +248,10 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
               autoCorrect={false}
             />
 
-            <Text style={styles.inputLabel}>Phone (optional)</Text>
+            <Text style={styles.inputLabel}>{t('employees.phoneOptional')}</Text>
             <TextInput
               style={styles.input}
-              placeholder="+1 234 567 8900"
+              placeholder={t('employees.phonePlaceholder')}
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
@@ -258,8 +259,7 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
 
             <View style={styles.infoBox}>
               <Text style={styles.infoText}>
-                💡 A temporary password will be automatically generated. 
-                You'll need to share it with the employee after creation.
+                {t('employees.passwordInfo')}
               </Text>
             </View>
 
@@ -271,12 +271,12 @@ export default function AddEmployeeModal({ visible, onClose, onSuccess }: AddEmp
               {loading ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.addButtonText}>Create Employee Account</Text>
+                <Text style={styles.addButtonText}>{t('employees.createAccount')}</Text>
               )}
             </Pressable>
 
             <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelButtonText}>{t('employees.cancel')}</Text>
             </Pressable>
           </ScrollView>
         </View>

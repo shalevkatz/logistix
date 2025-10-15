@@ -1,13 +1,15 @@
 // app/service-calls.tsx
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel, ServiceCallStatus, useServiceCalls } from '../hooks/useServiceCalls';
+import { useLanguage } from '../contexts/LanguageContext';
+import { getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabelKey, ServiceCallStatus, useServiceCalls } from '../hooks/useServiceCalls';
 import { supabase } from '../lib/supabase';
 
 export default function ServiceCallsScreen() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,14 +26,23 @@ export default function ServiceCallsScreen() {
 
   const { serviceCalls, loading, error, refetch } = useServiceCalls(userId);
 
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) {
+        refetch();
+      }
+    }, [userId, refetch])
+  );
+
   // Filter service calls
   const filteredServiceCalls = useMemo(() => {
     let filtered = serviceCalls;
 
     // Filter by status
     if (statusFilter === 'active') {
-      // Show only open and in_progress (exclude completed)
-      filtered = filtered.filter(call => call.status === 'open' || call.status === 'in_progress');
+      // Show only open and cannot_complete (exclude completed)
+      filtered = filtered.filter(call => call.status === 'open' || call.status === 'cannot_complete');
     } else {
       filtered = filtered.filter(call => call.status === statusFilter);
     }
@@ -53,9 +64,9 @@ export default function ServiceCallsScreen() {
 
   // Count by status
   const statusCounts = useMemo(() => ({
-    active: serviceCalls.filter(c => c.status === 'open' || c.status === 'in_progress').length,
+    active: serviceCalls.filter(c => c.status === 'open' || c.status === 'cannot_complete').length,
     open: serviceCalls.filter(c => c.status === 'open').length,
-    in_progress: serviceCalls.filter(c => c.status === 'in_progress').length,
+    cannot_complete: serviceCalls.filter(c => c.status === 'cannot_complete').length,
     completed: serviceCalls.filter(c => c.status === 'completed').length,
   }), [serviceCalls]);
 
@@ -76,12 +87,12 @@ export default function ServiceCallsScreen() {
   // Delete service call
   const deleteServiceCall = async (callId: string, callTitle: string) => {
     Alert.alert(
-      'Delete Service Call',
-      `Are you sure you want to delete "${callTitle}"? This action cannot be undone.`,
+      t('serviceCalls.deleteTitle'),
+      `${t('serviceCalls.deleteConfirm')} "${callTitle}"? ${t('serviceCalls.cannotUndo')}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('serviceCalls.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('serviceCalls.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -91,12 +102,12 @@ export default function ServiceCallsScreen() {
                 .eq('id', callId);
 
               if (error) {
-                Alert.alert('Error', 'Failed to delete service call: ' + error.message);
+                Alert.alert(t('common.error'), `${t('serviceCalls.errorDeleting')}: ${error.message}`);
               } else {
                 await refetch();
               }
             } catch (err) {
-              Alert.alert('Error', 'An unexpected error occurred while deleting.');
+              Alert.alert(t('common.error'), t('serviceCalls.errorUnexpected'));
               console.error('Delete service call error:', err);
             }
           }
@@ -108,29 +119,29 @@ export default function ServiceCallsScreen() {
   // Mark service call as complete
   const completeServiceCall = async (callId: string, callTitle: string) => {
     Alert.alert(
-      'Complete Service Call',
-      `Mark "${callTitle}" as completed?`,
+      t('serviceCalls.completeTitle'),
+      `${t('serviceCalls.completeConfirm')} "${callTitle}" ${t('serviceCalls.asCompleted')}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('serviceCalls.cancel'), style: 'cancel' },
         {
-          text: 'Complete',
+          text: t('serviceCalls.complete'),
           onPress: async () => {
             try {
               const { error } = await supabase
                 .from('service_calls')
-                .update({ 
+                .update({
                   status: 'completed',
                   completed_at: new Date().toISOString()
                 })
                 .eq('id', callId);
 
               if (error) {
-                Alert.alert('Error', 'Failed to update service call: ' + error.message);
+                Alert.alert(t('common.error'), `${t('serviceCalls.errorCompleting')}: ${error.message}`);
               } else {
                 await refetch();
               }
             } catch (err) {
-              Alert.alert('Error', 'An unexpected error occurred.');
+              Alert.alert(t('common.error'), t('serviceCalls.errorUnexpected'));
               console.error('Complete service call error:', err);
             }
           }
@@ -146,7 +157,7 @@ export default function ServiceCallsScreen() {
         style={styles.deleteSwipeButton}
         onPress={() => deleteServiceCall(callId, callTitle)}
       >
-        <Text style={styles.deleteSwipeButtonText}>Delete</Text>
+        <Text style={styles.deleteSwipeButtonText}>{t('serviceCalls.delete')}</Text>
       </Pressable>
     );
   };
@@ -154,13 +165,13 @@ export default function ServiceCallsScreen() {
   // Render right swipe actions (complete button)
   const renderRightActions = (callId: string, callTitle: string, status: ServiceCallStatus) => {
     if (status === 'completed') return null;
-    
+
     return (
       <Pressable
         style={styles.completeSwipeButton}
         onPress={() => completeServiceCall(callId, callTitle)}
       >
-        <Text style={styles.completeSwipeButtonText}>✓ Complete</Text>
+        <Text style={styles.completeSwipeButtonText}>{t('serviceCalls.complete')}</Text>
       </Pressable>
     );
   };
@@ -177,26 +188,26 @@ export default function ServiceCallsScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Service Calls</Text>
+        <Text style={styles.title}>{t('serviceCalls.title')}</Text>
         <Pressable onPress={() => router.push('/create-service-call')} style={styles.addButton}>
-          <Text style={styles.addButtonText}>+ New</Text>
+          <Text style={styles.addButtonText}>{t('serviceCalls.newCall')}</Text>
         </Pressable>
       </View>
 
       {/* Error / Empty / List */}
       {error ? (
         <View style={styles.errorBox}>
-          <Text style={styles.errorText}>Couldn't load service calls: {error}</Text>
+          <Text style={styles.errorText}>{t('serviceCalls.errorLoading')}: {error}</Text>
           <Pressable onPress={refetch} style={styles.retryBtn}>
-            <Text style={styles.retryBtnText}>Retry</Text>
+            <Text style={styles.retryBtnText}>{t('serviceCalls.retry')}</Text>
           </Pressable>
         </View>
       ) : serviceCalls.length === 0 ? (
         // Empty state
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>No service calls yet</Text>
+          <Text style={styles.emptyTitle}>{t('serviceCalls.noCallsTitle')}</Text>
           <Text style={styles.emptySubtitle}>
-            Create your first service call to track maintenance and support requests.
+            {t('serviceCalls.noCallsSubtitle')}
           </Text>
           <Pressable onPress={() => router.push('/create-service-call')} style={styles.bigAddCircle}>
             <Text style={styles.bigAddText}>+</Text>
@@ -208,24 +219,24 @@ export default function ServiceCallsScreen() {
           <View style={styles.summaryRow}>
             <View style={[styles.card, { backgroundColor: '#EFF6FF' }]}>
               <Text style={styles.cardNum}>{statusCounts.active}</Text>
-              <Text style={styles.cardLabel}>Active Calls</Text>
+              <Text style={styles.cardLabel}>{t('serviceCalls.activeCalls')}</Text>
             </View>
             <View style={[styles.card, { backgroundColor: '#D1FAE5' }]}>
               <Text style={styles.cardNum}>{statusCounts.completed}</Text>
-              <Text style={styles.cardLabel}>Completed</Text>
+              <Text style={styles.cardLabel}>{t('serviceCalls.completed')}</Text>
             </View>
           </View>
 
           {/* Status Filter Tabs */}
           <View style={styles.filterTabs}>
-            {(['active', 'open', 'in_progress', 'completed'] as const).map(status => (
+            {(['active', 'open', 'cannot_complete', 'completed'] as const).map(status => (
               <Pressable
                 key={status}
                 onPress={() => setStatusFilter(status)}
                 style={[styles.filterTab, statusFilter === status && styles.filterTabActive]}
               >
                 <Text style={[styles.filterTabText, statusFilter === status && styles.filterTabTextActive]}>
-                  {status === 'active' ? 'Active' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  {status === 'active' ? t('serviceCalls.active') : status === 'cannot_complete' ? t('serviceCalls.cannotComplete') : status === 'open' ? t('serviceCalls.open') : t('serviceCalls.completed')}
                 </Text>
               </Pressable>
             ))}
@@ -235,7 +246,7 @@ export default function ServiceCallsScreen() {
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search service calls..."
+              placeholder={t('serviceCalls.searchPlaceholder')}
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -248,7 +259,7 @@ export default function ServiceCallsScreen() {
           {filteredServiceCalls.length === 0 ? (
             <View style={styles.emptySearchWrap}>
               <Text style={styles.emptySearchText}>
-                No service calls found for "{searchQuery}"
+                {t('serviceCalls.noResults')} "{searchQuery}"
               </Text>
             </View>
           ) : (
@@ -284,13 +295,13 @@ export default function ServiceCallsScreen() {
 
                     {item.scheduled_date && (
                       <Text style={styles.scheduledDate}>
-                        📅 Scheduled: {new Date(item.scheduled_date).toLocaleDateString()}
+                        📅 {t('serviceCalls.scheduled')}: {new Date(item.scheduled_date).toLocaleDateString()}
                       </Text>
                     )}
 
                     <View style={styles.cardFooter}>
                       <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-                        <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
+                        <Text style={styles.statusText}>{t(getStatusLabelKey(item.status))}</Text>
                       </View>
                       {item.customer_phone && (
                         <Pressable
@@ -300,7 +311,7 @@ export default function ServiceCallsScreen() {
                           }}
                           style={styles.callButton}
                         >
-                          <Text style={styles.callButtonText}>📞 Call</Text>
+                          <Text style={styles.callButtonText}>📞 {t('serviceCalls.call')}</Text>
                         </Pressable>
                       )}
                     </View>

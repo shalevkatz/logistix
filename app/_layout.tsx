@@ -6,6 +6,7 @@ import 'react-native-gesture-handler'; // ensure RN Gesture Handler is initializ
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-get-random-values'; // ensure crypto.getRandomValues is available
 import { supabase } from '../lib/supabase';
+import { LanguageProvider } from '../contexts/LanguageContext';
 
 // Screens that do NOT require a session
 const AUTH_SCREENS = new Set([
@@ -73,7 +74,9 @@ function AuthGate() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthGate />
+      <LanguageProvider>
+        <AuthGate />
+      </LanguageProvider>
     </GestureHandlerRootView>
   );
 }

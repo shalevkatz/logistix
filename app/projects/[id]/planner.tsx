@@ -1,20 +1,23 @@
 // app/projects/[id].tsx - WITH PROJECT INFO BUTTON
 import CableColorPicker from '@/components/CableColorPicker';
 import CableStatusSelector from '@/components/CableStatusSelector';
+import DeviceColorPicker from '@/components/DeviceColorPicker';
 import DeviceStatusSelector from '@/components/DeviceStatusSelector';
 import FloorManager from '@/components/FloorManager';
 import SitePlanner from '@/components/SitePlanner';
 import { CablePoint, useSiteMapStore } from '@/components/state/useSiteMapStore';
 import { EditorMode } from '@/components/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/lib/supabase';
 import { ensureSafePhoto } from '@/utils/image';
 import { toJpegBytes } from '@/utils/uploadFloorImage';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ProjectCompletionModal from '@/components/ProjectCompletionModal';
 
 function toPublicUrl(path: string | null): string | null {
   if (!path) return null;
@@ -47,6 +50,7 @@ type ProjectInfo = {
 };
 
 export default function ProjectScreen() {
+  const { t } = useLanguage();
   const { id: projectId } = useLocalSearchParams<{ id: string }>();
   const nav = useNavigation();
   const [imageUrl, setImageUrl] = React.useState<string | null>(null);
@@ -55,7 +59,7 @@ export default function ProjectScreen() {
   const [floorId, setFloorId] = useState<string | null>(null);
   const [floorManagerOpen, setFloorManagerOpen] = useState(false);
   const [dbFloors, setDbFloors] = useState<DbFloor[]>([]);
-  const projectTitle = useMemo(() => `Project ${String(projectId).slice(0, 6)}`, [projectId]);
+  const projectTitle = useMemo(() => `${t('planner.project')} ${String(projectId).slice(0, 6)}`, [projectId, t]);
   const loadDevices = useSiteMapStore((s) => s.loadDevices);
   const [deletedCableIds, setDeletedCableIds] = useState<string[]>([]);
   const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
@@ -74,6 +78,7 @@ export default function ProjectScreen() {
   const [projectCompleted, setProjectCompleted] = useState(false);
   const [hasPromptedCompletion, setHasPromptedCompletion] = useState(false);
   const [projectStatusLoaded, setProjectStatusLoaded] = useState(false);
+  const [showProjectCelebrationModal, setShowProjectCelebrationModal] = useState(false);
 
   // Confetti for completion
   const confettiRef = useRef<any>(null);
@@ -163,6 +168,10 @@ export default function ProjectScreen() {
 
 const [cableStatusModalVisible, setCableStatusModalVisible] = useState(false);
 const [cableToEditStatus, setCableToEditStatus] = useState<string | null>(null);
+const [cableMetersUsed, setCableMetersUsed] = useState<number | null>(null);
+const [cableCableType, setCableCableType] = useState<string | null>(null);
+const [cableCablesQuantity, setCableCablesQuantity] = useState<number | null>(null);
+const [cablePhotoUrl, setCablePhotoUrl] = useState<string | null>(null);
 
 const [statusModalVisible, setStatusModalVisible] = useState(false);
 const [deviceToEditStatus, setDeviceToEditStatus] = useState<string | null>(null);
@@ -188,16 +197,16 @@ const [deviceIssueDescription, setDeviceIssueDescription] = useState<string | nu
       if (!hasPromptedCompletion) {
         setTimeout(() => {
           Alert.alert(
-            '🎉 Project Complete!',
-            'Congratulations! All items have been installed. Would you like to mark this project as completed?',
+            t('planner.projectComplete'),
+            t('planner.projectCompleteMessage'),
             [
               {
-                text: 'Not Yet',
+                text: t('planner.notYet'),
                 style: 'cancel',
                 onPress: () => setHasPromptedCompletion(true),
               },
               {
-                text: 'Mark as Completed',
+                text: t('planner.markAsCompleted'),
                 style: 'default',
                 onPress: async () => {
                   await markProjectAsCompleted();
@@ -221,17 +230,33 @@ const [deviceIssueDescription, setDeviceIssueDescription] = useState<string | nu
         .from('projects')
         .update({ completed: true })
         .eq('id', projectId);
-      
+
       if (error) {
         console.error('❌ Failed to mark project as completed:', error);
-        Alert.alert('Error', 'Failed to mark project as completed');
+        Alert.alert(t('common.error'), t('planner.errorMarkingCompleted'));
       } else {
+        // Small delay to ensure database commit
+        await new Promise(resolve => setTimeout(resolve, 300));
+
         setProjectCompleted(true);
-        Alert.alert('Success', 'Project marked as completed! You can find it in the Completed Projects section.');
+
+        // Trigger haptic feedback (strong success vibration)
+        Vibration.vibrate([0, 100, 50, 100]);
+
+        // Show celebration modal
+        setShowProjectCelebrationModal(true);
+
+        // Recalculate progress to ensure UI updates
+        await calculateTotalProjectProgress();
       }
     } catch (err) {
       console.error('❌ Error marking project as completed:', err);
     }
+  };
+
+  // Handle celebration modal close
+  const handleProjectCelebrationClose = () => {
+    setShowProjectCelebrationModal(false);
   };
 
 // Handle device tap in read mode (for status change)
@@ -419,44 +444,197 @@ const handleStatusChange = useCallback(async (
 
 
 // Handle cable tap in read mode
-const handleCableTapInReadMode = useCallback((cableId: string) => {
+const handleCableTapInReadMode = useCallback(async (cableId: string) => {
   console.log('🎯 Cable tapped in read mode:', cableId);
   setCableToEditStatus(cableId);
+
+  // Fetch cable data from database if it's a DB cable
+  if (isDbId(cableId)) {
+    try {
+      const { data: cableData, error } = await supabase
+        .from('cables')
+        .select('meters_used, cable_type, cables_quantity, installation_photo_url')
+        .eq('id', cableId)
+        .single();
+
+      if (!error && cableData) {
+        setCableMetersUsed(cableData.meters_used);
+        setCableCableType(cableData.cable_type);
+        setCableCablesQuantity(cableData.cables_quantity);
+        setCablePhotoUrl(cableData.installation_photo_url);
+      } else {
+        setCableMetersUsed(null);
+        setCableCableType(null);
+        setCableCablesQuantity(null);
+        setCablePhotoUrl(null);
+      }
+    } catch (err) {
+      console.error('Error fetching cable data:', err);
+      setCableMetersUsed(null);
+      setCableCableType(null);
+      setCableCablesQuantity(null);
+      setCablePhotoUrl(null);
+    }
+  } else {
+    setCableMetersUsed(null);
+    setCableCableType(null);
+    setCableCablesQuantity(null);
+    setCablePhotoUrl(null);
+  }
+
   setCableStatusModalVisible(true);
 }, []);
 
 // Handle cable status change
-const handleCableStatusChange = useCallback(async (status: 'installed' | 'pending' | 'cannot_install' | null) => {
+const handleCableStatusChange = useCallback(async (
+  status: 'installed' | 'pending' | 'cannot_install' | null,
+  metersUsed?: number,
+  cableType?: string,
+  cablesQuantity?: number,
+  photoUri?: string
+) => {
   if (!cableToEditStatus) return;
 
   console.log('📊 Changing cable status:', cableToEditStatus, status);
 
   const cables = useSiteMapStore.getState().cables;
-  const updatedCables = cables.map(c => 
+  const updatedCables = cables.map(c =>
     c.id === cableToEditStatus ? { ...c, status } : c
   );
   useSiteMapStore.setState({ cables: updatedCables });
 
   if (isDbId(cableToEditStatus)) {
     try {
-      const { error } = await supabase
+      let photoUrl: string | null = null;
+
+      // Upload photo if provided
+      if (photoUri && status === 'installed') {
+        console.log('📸 Uploading cable installation photo...');
+
+        try {
+          const timestamp = Date.now();
+          const randomStr = Math.random().toString(36).substring(7);
+          const fileName = `cable_${timestamp}_${randomStr}.jpg`;
+
+          console.log('🔄 Compressing image...');
+          const compressedUri = await ensureSafePhoto(photoUri);
+          console.log('✅ Image compressed');
+
+          const bytes = await toJpegBytes(compressedUri);
+
+          if (!bytes || bytes.byteLength < 1000) {
+            Alert.alert('Error', 'Invalid image file');
+            return;
+          }
+
+          console.log('📦 Image size:', bytes.byteLength, 'bytes');
+
+          const uploadWithRetry = async (retries = 3): Promise<void> => {
+            try {
+              const { error: uploadError } = await supabase.storage
+                .from('device-photos')
+                .upload(fileName, bytes, {
+                  contentType: 'image/jpeg',
+                  upsert: true,
+                });
+
+              if (uploadError) throw uploadError;
+            } catch (err: any) {
+              const msg = String(err?.message ?? err);
+              const isNetworkError = /Network request failed/i.test(msg) || err?.name === 'StorageUnknownError';
+
+              if (retries > 0 && isNetworkError) {
+                const wait = 400 * (4 - retries);
+                console.log(`⏳ Retrying upload in ${wait}ms... (${retries} retries left)`);
+                await new Promise((resolve) => setTimeout(resolve, wait));
+                return uploadWithRetry(retries - 1);
+              }
+              throw err;
+            }
+          };
+
+          await uploadWithRetry();
+
+          const { data: urlData } = supabase.storage
+            .from('device-photos')
+            .getPublicUrl(fileName);
+
+          photoUrl = urlData.publicUrl;
+          console.log('✅ Photo uploaded:', photoUrl);
+        } catch (uploadErr: any) {
+          console.error('❌ Error during photo upload:', uploadErr);
+          Alert.alert('Error', `Failed to upload photo: ${uploadErr?.message || 'Please try again'}`);
+          return;
+        }
+      }
+
+      // Get current user ID
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error('❌ Failed to get user:', userError);
+      }
+
+      // Prepare update data
+      const updateData: any = {
+        status,
+        status_updated_at: new Date().toISOString(),
+        updated_by: user?.id || null,
+      };
+
+      // Add cable-specific data if status is installed
+      if (status === 'installed') {
+        console.log('📊 Cable data received:', { metersUsed, cableType, cablesQuantity, hasPhoto: !!photoUrl });
+
+        if (metersUsed && cableType && cablesQuantity) {
+          updateData.meters_used = metersUsed;
+          updateData.cable_type = cableType;
+          updateData.cables_quantity = cablesQuantity;
+          if (photoUrl) {
+            updateData.installation_photo_url = photoUrl;
+          }
+          console.log('✅ Cable tracking data will be saved');
+        } else {
+          console.warn('⚠️ Missing cable tracking data:', {
+            hasMeters: !!metersUsed,
+            hasType: !!cableType,
+            hasQuantity: !!cablesQuantity
+          });
+        }
+      }
+
+      console.log('📝 Cable update data:', JSON.stringify(updateData, null, 2));
+      console.log('🔍 Cable ID to update:', cableToEditStatus);
+
+      const { data: updateResult, error } = await supabase
         .from('cables')
-        .update({ status })
-        .eq('id', cableToEditStatus);
+        .update(updateData)
+        .eq('id', cableToEditStatus)
+        .select();
+
+      console.log('📊 Update result:', updateResult);
+      console.log('❌ Update error:', error);
 
       if (error) {
         console.error('❌ Failed to update cable status:', error);
-        Alert.alert('Error', 'Failed to update cable status');
+        Alert.alert('Error', `Failed to update cable status: ${error.message || JSON.stringify(error)}`);
       } else {
         console.log('✅ Cable status updated in database');
         await calculateTotalProjectProgress();
+
+        // Show success message
+        if (status === 'installed') {
+          Alert.alert('Success', 'Cable marked as installed with details recorded');
+        }
       }
     } catch (err) {
       console.error('❌ Error updating cable status:', err);
+      Alert.alert('Error', 'An unexpected error occurred');
     }
   }
 
   setCableToEditStatus(null);
+  setCableStatusModalVisible(false);
 }, [cableToEditStatus, calculateTotalProjectProgress]);
 
   // Load all floors from database
@@ -481,7 +659,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
 
     const { data: devicesData } = await supabase
       .from('devices')
-      .select('id, type, x, y, rotation, scale, status')
+      .select('id, type, x, y, rotation, scale, color, status, parent_rack_id')
       .eq('floor_id', floorDbId);
 
     const nodes = devicesData?.map(d => ({
@@ -491,7 +669,9 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       y: Number(d.y),
       rotation: Number(d.rotation) || 0,
       scale: Number(d.scale) || 1,
+      color: d.color as string | undefined,
       status: d.status as any,
+      parentRackId: d.parent_rack_id as string | null | undefined,
     })) || [];
 
     const { data: cablesData } = await supabase
@@ -641,11 +821,13 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             y: device.y,
             rotation: device.rotation,
             scale: device.scale,
+            color: device.color,
             status: device.status,
+            parent_rack_id: device.parentRackId || null,
           })
           .eq('id', device.id);
       }
-      
+
       if (newDevices.length > 0) {
         const devicePayload = newDevices.map(n => ({
           floor_id: floorId,
@@ -655,9 +837,17 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           y: n.y,
           rotation: n.rotation,
           scale: n.scale,
+          color: n.color,
           status: n.status,
+          parent_rack_id: n.parentRackId || null,
         }));
-        await supabase.from('devices').insert(devicePayload);
+        console.log('💾 Inserting new devices:', devicePayload);
+        const { error: insertError } = await supabase.from('devices').insert(devicePayload);
+        if (insertError) {
+          console.error('❌ Failed to insert devices:', insertError);
+          throw new Error(`Failed to insert devices: ${insertError.message}`);
+        }
+        console.log('✅ New devices inserted successfully');
       }
       
       const existingCables = state.cables.filter(c => isDbId(c.id));
@@ -749,13 +939,13 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             style={{ paddingHorizontal: 12, paddingVertical: 6 }}
           >
             <Text style={{ fontWeight: '600' }}>
-              {mode === 'read' ? 'Edit' : 'Done'}
+              {mode === 'read' ? t('planner.edit') : t('planner.done')}
             </Text>
           </Pressable>
         ) : null
       ),
     });
-  }, [nav, mode, projectTitle, handleModeToggle, isEmployee]);
+  }, [nav, mode, projectTitle, handleModeToggle, isEmployee, t]);
 
   // Initial load
   React.useEffect(() => {
@@ -854,7 +1044,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           <View style={infoStyles.modalContent}>
             {/* Header */}
             <View style={infoStyles.modalHeader}>
-              <Text style={infoStyles.modalTitle}>Project Info</Text>
+              <Text style={infoStyles.modalTitle}>{t('planner.projectInfo')}</Text>
               <Pressable onPress={() => setInfoModalVisible(false)} style={infoStyles.closeButton}>
                 <Text style={infoStyles.closeButtonText}>✕</Text>
               </Pressable>
@@ -864,14 +1054,14 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             <ScrollView style={infoStyles.scrollView} showsVerticalScrollIndicator={false}>
               {/* Project Title */}
               <View style={infoStyles.section}>
-                <Text style={infoStyles.sectionTitle}>📋 Project</Text>
-                <Text style={infoStyles.valueText}>{projectInfo?.title || 'Untitled Project'}</Text>
+                <Text style={infoStyles.sectionTitle}>📋 {t('planner.project')}</Text>
+                <Text style={infoStyles.valueText}>{projectInfo?.title || t('planner.untitledProject')}</Text>
               </View>
 
               {/* Client Info */}
               {projectInfo?.client_name && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>👤 Client</Text>
+                  <Text style={infoStyles.sectionTitle}>👤 {t('planner.client')}</Text>
                   <Text style={infoStyles.valueText}>{projectInfo.client_name}</Text>
                 </View>
               )}
@@ -879,7 +1069,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Phone */}
               {projectInfo?.phone_number && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>📞 Phone</Text>
+                  <Text style={infoStyles.sectionTitle}>📞 {t('planner.phone')}</Text>
                   <Pressable onPress={() => Linking.openURL(`tel:${projectInfo.phone_number}`)}>
                     <Text style={[infoStyles.valueText, infoStyles.phoneLink]}>
                       {projectInfo.phone_number}
@@ -891,7 +1081,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Location */}
               {projectInfo?.location && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>📍 Location</Text>
+                  <Text style={infoStyles.sectionTitle}>📍 {t('planner.location')}</Text>
                   <Text style={infoStyles.valueText}>{projectInfo.location}</Text>
                 </View>
               )}
@@ -899,7 +1089,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Budget */}
               {projectInfo?.budget && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>💰 Budget</Text>
+                  <Text style={infoStyles.sectionTitle}>💰 {t('planner.budget')}</Text>
                   <Text style={infoStyles.valueText}>${projectInfo.budget.toLocaleString()}</Text>
                 </View>
               )}
@@ -907,9 +1097,9 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Priority */}
               {projectInfo?.priority && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>⚡ Priority</Text>
+                  <Text style={infoStyles.sectionTitle}>⚡ {t('planner.priority')}</Text>
                   <View style={[infoStyles.priorityBadge, {
-                    backgroundColor: projectInfo.priority === 'High' ? '#EF4444' : 
+                    backgroundColor: projectInfo.priority === 'High' ? '#EF4444' :
                                     projectInfo.priority === 'Medium' ? '#F59E0B' : '#10B981'
                   }]}>
                     <Text style={infoStyles.priorityText}>{projectInfo.priority}</Text>
@@ -920,15 +1110,15 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Dates */}
               {(projectInfo?.start_date || projectInfo?.due_date) && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>📅 Timeline</Text>
+                  <Text style={infoStyles.sectionTitle}>📅 {t('planner.timeline')}</Text>
                   {projectInfo.start_date && (
                     <Text style={infoStyles.dateText}>
-                      Start: {new Date(projectInfo.start_date).toLocaleDateString()}
+                      {t('planner.start')}: {new Date(projectInfo.start_date).toLocaleDateString()}
                     </Text>
                   )}
                   {projectInfo.due_date && (
                     <Text style={infoStyles.dateText}>
-                      Due: {new Date(projectInfo.due_date).toLocaleDateString()}
+                      {t('planner.due')}: {new Date(projectInfo.due_date).toLocaleDateString()}
                     </Text>
                   )}
                 </View>
@@ -937,7 +1127,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Description */}
               {projectInfo?.description && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>📝 Description</Text>
+                  <Text style={infoStyles.sectionTitle}>📝 {t('planner.description')}</Text>
                   <Text style={infoStyles.descriptionText}>{projectInfo.description}</Text>
                 </View>
               )}
@@ -945,7 +1135,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
               {/* Employees */}
               {employees.length > 0 && (
                 <View style={infoStyles.section}>
-                  <Text style={infoStyles.sectionTitle}>👷 Assigned Employees</Text>
+                  <Text style={infoStyles.sectionTitle}>👷 {t('planner.assignedEmployees')}</Text>
                   <View style={infoStyles.employeesList}>
                     {employees.map(emp => (
                       <View key={emp.id} style={infoStyles.employeeChip}>
@@ -994,13 +1184,13 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           borderRadius: 4,
           backgroundColor: projectCompleted ? '#22c55e' : totalProjectProgress === 100 ? '#fbbf24' : '#8b5cf6',
         }} />
-        <Text style={{ 
-          fontSize: 15, 
-          fontWeight: '700', 
+        <Text style={{
+          fontSize: 15,
+          fontWeight: '700',
           color: '#fff',
           letterSpacing: 0.3,
         }}>
-          {projectCompleted ? 'Project Completed' : totalProjectProgress === 100 ? 'Ready to Complete' : 'Project Progress'}
+          {projectCompleted ? t('planner.projectCompleted') : totalProjectProgress === 100 ? t('planner.readyToComplete') : t('planner.projectProgress')}
         </Text>
       </View>
       <Text style={{ 
@@ -1039,16 +1229,16 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       justifyContent: 'space-between',
       alignItems: 'center',
     }}>
-      <Text style={{ 
-        fontSize: 12, 
+      <Text style={{
+        fontSize: 12,
         color: 'rgba(255, 255, 255, 0.7)',
         fontWeight: '500',
       }}>
         {projectCompleted
-          ? '✓ Marked as completed'
-          : totalProjectProgress === 100 
-            ? '🌟 All items installed!' 
-            : `${completedDevices + completedCables} of ${totalDevices + totalCables} completed`
+          ? `✓ ${t('planner.markedAsCompleted')}`
+          : totalProjectProgress === 100
+            ? `🌟 ${t('planner.allItemsInstalled')}`
+            : `${completedDevices + completedCables} ${t('planner.completedOf')} ${totalDevices + totalCables} ${t('planner.completed')}`
         }
       </Text>
       
@@ -1059,7 +1249,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         }}>
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.5)', fontWeight: '600' }}>
-              DEVICES
+              {t('planner.devices')}
             </Text>
             <Text style={{ fontSize: 13, color: '#fff', fontWeight: '700' }}>
               {completedDevices}/{totalDevices}
@@ -1067,7 +1257,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
           </View>
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.5)', fontWeight: '600' }}>
-              CABLES
+              {t('planner.cables')}
             </Text>
             <Text style={{ fontSize: 13, color: '#fff', fontWeight: '700' }}>
               {completedCables}/{totalCables}
@@ -1097,7 +1287,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             borderRadius: 30,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>← Back</Text>
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>← {t('planner.back')}</Text>
         </Pressable>
       </View>
       
@@ -1123,7 +1313,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             borderRadius: 20,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '700' }}>ℹ️ Info</Text>
+          <Text style={{ color: 'white', fontWeight: '700' }}>ℹ️ {t('planner.info')}</Text>
         </Pressable>
 
         {/* Edit/Done Button - Only show for managers */}
@@ -1138,7 +1328,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             }}
           >
             <Text style={{ color: 'white', fontWeight: '700' }}>
-              {mode === 'read' ? '✏️ Edit' : '✓ Done'}
+              {mode === 'read' ? `✏️ ${t('planner.edit')}` : `✓ ${t('planner.done')}`}
             </Text>
           </Pressable>
         )}
@@ -1165,7 +1355,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             }}
           >
             <Text style={{ color: 'white', fontWeight: '700' }}>
-              Manage Floors
+              {t('planner.manageFloors')}
             </Text>
           </Pressable>
         </View>
@@ -1192,7 +1382,7 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
             }}
           >
             <Text style={{ color: 'white', fontWeight: '700' }}>
-              Manage Floors
+              {t('planner.manageFloors')}
             </Text>
           </Pressable>
         </View>
@@ -1203,11 +1393,12 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
         <SitePlanner key={bustedUrl} imageUrl={bustedUrl} editable={mode === 'edit'} onDeviceTapInReadMode={handleDeviceTapInReadMode} onCableTapInReadMode={handleCableTapInReadMode} />
       ) : (
         <Text style={{ textAlign: 'center', marginTop: 200 }}>
-          אין עדיין תמונה לקומה הזו
+          {t('planner.noFloorImage')}
         </Text>
       )}
       <CableColorPicker editable={mode === 'edit'} />
-      
+      <DeviceColorPicker editable={mode === 'edit'} />
+
       {/* Floor Manager Modal */}
       <FloorManager
         visible={floorManagerOpen}
@@ -1241,15 +1432,31 @@ const handleCableStatusChange = useCallback(async (status: 'installed' | 'pendin
       <CableStatusSelector
         visible={cableStatusModalVisible}
         currentStatus={
-          cableToEditStatus 
+          cableToEditStatus
             ? useSiteMapStore.getState().cables.find(c => c.id === cableToEditStatus)?.status ?? null
             : null
         }
         onClose={() => {
           setCableStatusModalVisible(false);
           setCableToEditStatus(null);
+          setCableMetersUsed(null);
+          setCableCableType(null);
+          setCableCablesQuantity(null);
+          setCablePhotoUrl(null);
         }}
         onSelectStatus={handleCableStatusChange}
+        existingMetersUsed={cableMetersUsed}
+        existingCableType={cableCableType}
+        existingCablesQuantity={cableCablesQuantity}
+        existingPhotoUrl={cablePhotoUrl}
+        isManager={!isEmployee}
+      />
+
+      {/* Project Completion Celebration Modal */}
+      <ProjectCompletionModal
+        visible={showProjectCelebrationModal}
+        onClose={handleProjectCelebrationClose}
+        projectTitle={projectInfo?.title || t('planner.untitledProject')}
       />
     </View>
   );

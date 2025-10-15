@@ -15,6 +15,8 @@ import {
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AddEmployeeModal from '../components/AddEmployeeModal';
+import LanguageSelector from '../components/LanguageSelector';
+import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 
 type Employee = {
@@ -26,12 +28,14 @@ type Employee = {
 
 export default function EmployeeListScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [userId, setUserId] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
 
   // Get current user
   React.useEffect(() => {
@@ -157,9 +161,14 @@ export default function EmployeeListScreen() {
           <Text style={styles.eyebrow}>Team Management</Text>
           <Text style={styles.title}>Employees</Text>
         </View>
-        <Pressable onPress={signOut} style={styles.signOutBtn}>
-          <Text style={styles.signOutText}>Sign out</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => setShowLanguageModal(true)} style={styles.langBtn}>
+            <Text style={styles.langBtnText}>🌐</Text>
+          </Pressable>
+          <Pressable onPress={signOut} style={styles.signOutBtn}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Stats */}
@@ -267,6 +276,12 @@ export default function EmployeeListScreen() {
         }}
       />
 
+      {/* Language Selector Modal */}
+      <LanguageSelector
+        visible={showLanguageModal}
+        onClose={() => setShowLanguageModal(false)}
+      />
+
       {/* Bottom Navigation Bar */}
       <View style={styles.bottomTabBar}>
         <Pressable
@@ -310,6 +325,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  langBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#E0E7FF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#6D5DE7',
+  },
+  langBtnText: {
+    fontSize: 20,
   },
   eyebrow: {
     fontSize: 12,
